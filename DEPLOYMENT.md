@@ -39,7 +39,7 @@ Supabase 默认邮件服务限制收件人为项目团队成员，不能作为�
 
 ## 3. GitHub 存档
 
-建议创建私有仓库 `yvone-fitness`。只上传本文件所在项目目录内被 Git 跟踪的文件。`.env.local`、`node_modules`、`.next` 和 `.vercel` 都已被忽略。
+已存档到 https://github.com/CWT96/yvone-fitness 。用户确认暂时 Public，之后自行改为 Private。只上传本文件所在项目目录内被 Git 跟踪的文件。`.env.local`、`node_modules`、`.next` 和 `.vercel` 都已被忽略。
 
 本地尚未建 Git 仓库时，执行：
 
@@ -51,11 +51,11 @@ git remote add origin https://github.com/你的账号/yvone-fitness.git
 git push -u origin main
 ```
 
-不要上传任何真实学员数据和生产数据库备份。GitHub Actions 会自动运行类型检查、数据库测试和构建。
+不要上传任何真实学员数据和生产数据库备份。自动检查模板位于 `scripts/github-actions-ci.yml`。当前凭据无 workflow 权限，因此还没有启用 GitHub Actions。需要时可在 GitHub 网页把模板内容保存为 `.github/workflows/ci.yml`。
 
 ## 4. Vercel 部署
 
-1. https://vercel.com/new → Import Git Repository → 选择私有仓库 `yvone-fitness`。
+1. 当前已建立独立项目 https://vercel.com/vinclo/yvone-fitness ，演示网址为 https://yvone-fitness.vercel.app 。Git 自动部署连接未能通过当前账号授权，需要在该项目 Settings → Git → Connect Git Repository 选择 `CWT96/yvone-fitness`，必要时允许 Vercel GitHub App 访问这一个仓库。不要改动原 `vinclo` 项目。
 2. Framework 为 Next.js；若仓库根目录就是本项目，Root Directory 保持默认。
 3. Node.js 选 24，Build command `npm run build`，Install command `npm ci`。
 4. 添加以下环境变量（Production；测试环境使用单独测试项目时再填写 Preview）：

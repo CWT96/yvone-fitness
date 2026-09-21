@@ -26,7 +26,7 @@
 - `npm run typecheck`：类型检查。
 - `npm test`：在本地 PGlite/PostgreSQL 中实际执行 SQL，测试权限与业务规则；外加时区、导出和邮件转义检查。
 - `npm run build`：正式部署构建。
-- `.github/workflows/ci.yml`：GitHub 自动检查。
+- `scripts/github-actions-ci.yml`：GitHub 自动检查模板。当前账号缺少 workflow 权限，尚未启用；后续在 GitHub 网页把它保存为 `.github/workflows/ci.yml` 即可。
 
 详细连接步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)，操作验收见 [ACCEPTANCE.md](ACCEPTANCE.md)。
 
