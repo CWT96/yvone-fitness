@@ -2,7 +2,7 @@
 
 ## 当前可查看
 
-- 已发布真实登录入口：https://yvone-fitness.vercel.app （教练账号及邮件连接仍待完成）
+- 已发布真实登录入口：https://yvonnefitness.com （备用：https://yvone-fitness.vercel.app；教练账号及邮件连接仍待完成）
 - Vercel 项目：https://vercel.com/vinclo/yvone-fitness
 - 部署状态：READY；独立项目 `yvone-fitness`，未修改原 `vinclo` 项目的代码、域名或配置。
 - 源码已上传 https://github.com/CWT96/yvone-fitness ，并本地 Git 提交；`../Yvone-Fitness-source.zip` 是不含密钥和依赖文件的源码备份。
@@ -16,9 +16,9 @@
 - 已在独立 Vercel 项目 yvone-fitness 的 Production 环境保存 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 和 SITE_URL。重新部署状态 READY（dpl_FDRyuA9RW6APxbYwYn6NY7Z1YwJT），已在浏览器确认公网显示真实登录界面。
 - 数据库迁移已由用户执行；用户确认教练邀请码已生成并自行保存。教练账号、Auth Site URL 与 Redirect URLs 配置尚待完成。
 - 用户已在 Squarespace 购买域名，并纠正其拼写为 yvonnefitness.com（不是 yonnefitness.com，也不是项目名 yvone-fitness）。用户报告 Resend 域名已 Verified，并开启 Receive。
-- 已将 yvonnefitness.com 和 www.yvonnefitness.com 添加至独立 Vercel 项目 yvone-fitness。公开 DNS 仍指向 Squarespace 默认网站，尚未验证 HTTPS 生效。
+- 已将 yvonnefitness.com 和 www.yvonnefitness.com 添加至独立 Vercel 项目 yvone-fitness。两者均通过 Vercel domains verify；权威 DNS 已确认 www 的新记录。直接访问新服务器已验证主域名 HTTPS 证书有效、HTTP 200 且内容为本站；部分本地 DNS 缓存仍可能暂时指向 Squarespace。
 - Vercel domains verify 返回的推荐记录为：A @ → 216.150.1.1；A @ → 216.150.16.1；CNAME www → 217075c645c4eec7.vercel-dns-016.com。使用这组具体推荐值，而非 inspect 输出的旧通用地址。
-- 待用户在 Squarespace 替换 @ 的四条默认网站 A 记录及 www 的 ext-sq.squarespace.com CNAME。保留 Squarespace Nameservers 和 Resend TXT/MX。待 DNS 验证后才更新 SITE_URL 及 Supabase 登录回调配置。
+- 用户已更新 Squarespace 网站 DNS。Production 的 SITE_URL 已改为 https://yvonnefitness.com，并重新部署成功：dpl_CbV3xE5fE3MQu9jrFJmCR9LpCfan（READY）。Supabase 登录回调配置已发给用户，待确认保存。
 - Resend API key、Auth SMTP 和定时邮件任务尚未配置。
 - GitHub 源码已上传；用户明确确认暂时 Public，之后自行改为 Private（待办）。
 - Vercel 自动 Git 连接未获当前集成访问权限，需在新项目 Settings → Git 授权这个仓库；现有网站通过 CLI 已部署，不受影响。
@@ -29,4 +29,4 @@
 
 ## 下一步
 
-教练邀请码已生成，不需重新生成。下一步先绑定 yvonnefitness.com 并配置网站 DNS，再配置 Supabase Auth Site URL、Redirect URLs 和 Resend SMTP，随后完成教练注册与邮箱验证。服务端密钥直接填入平台，不在聊天里发送。之后继续预约邮件联调，并补充 GitHub 自动部署授权。
+教练邀请码已生成，不需重新生成。域名已绑定并验证。下一步确认用户保存 Supabase Auth Site URL（https://yvonnefitness.com）及 Redirect URLs（主域名、www、Vercel 备用域名各加入 /auth/callback 和 /auth/callback?next=recovery），再配置 Resend SMTP，随后完成教练注册与邮箱验证。服务端密钥直接填入平台，不在聊天里发送。之后继续预约邮件联调，并补充 GitHub 自动部署授权。
