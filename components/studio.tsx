@@ -42,7 +42,6 @@ import type {
   Appointment,
   Plan,
   RecordEntry,
-  Package,
 } from "@/lib/types";
 import { displayTime, localToISO, csvCell } from "@/lib/time";
 import type { Session } from "@supabase/supabase-js";
@@ -63,6 +62,7 @@ type Dialog = {
   description?: string;
   fields: Field[];
   submit?: string;
+  publication?: boolean;
   action: (values: Record<string, string>) => Promise<void>;
 };
 const tabs = [
@@ -100,6 +100,7 @@ const statusNames: Record<string, string> = {
   pending: "等待处理",
   processing: "发送中",
   sent: "已发送",
+  synced: "已同步",
   skipped: "已跳过",
   failed: "发送失败",
 };
@@ -121,6 +122,8 @@ const emptyData = (): Data => ({
   events: [],
   email_jobs: [],
   packages: [],
+  member_prices: [],
+  contact_sync: [],
 });
 function Badge({ value }: { value: string }) {
   return (
@@ -293,7 +296,20 @@ function DialogView({
           >
             返回
           </button>
+          {dialog.publication && (
+            <button
+              type="submit"
+              name="intent"
+              value="draft"
+              className="btn secondary"
+              disabled={busy}
+            >
+              保存草稿（仅教练）
+            </button>
+          )}
           <button
+            name={dialog.publication ? "intent" : undefined}
+            value={dialog.publication ? "publish" : undefined}
             className="btn"
             disabled={
               busy ||
@@ -373,6 +389,8 @@ export default function Studio() {
       events,
       email_jobs,
       packages,
+      member_prices,
+      contact_sync,
       settings,
     ] = await Promise.all([
       read("profiles"),
@@ -385,6 +403,8 @@ export default function Studio() {
       read("appointment_events"),
       read("email_jobs"),
       read("packages"),
+      read("member_prices"),
+      read("contact_sync"),
       read("settings"),
     ]);
     if (slots.error) throw slots.error;
@@ -399,6 +419,8 @@ export default function Studio() {
       events,
       email_jobs,
       packages,
+      member_prices,
+      contact_sync,
       settings: settings[0] || emptyData().settings,
     } as Data);
   }, []);
@@ -452,6 +474,12 @@ export default function Studio() {
       clearInterval(timer);
     };
   }, [session, demo, load]);
+  const formatPrice = (value: number | null | undefined, currency = "USD") =>
+    value == null
+      ? "待教练设置"
+      : new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
+          value,
+        );
   const name = (id: string) =>
     data.profiles.find((p) => p.id === id)?.full_name || "学员";
   const navigate = (next: string) => {
@@ -611,16 +639,44 @@ export default function Studio() {
           shared: Boolean(a.p_shared),
         });
       }
+      if (fn === "set_training_deleted") {
+        if (a.p_kind === "plan")
+          n.plans = n.plans.map((p) =>
+            p.id === a.p_id
+              ? { ...p, deleted_at: a.p_deleted ? now : null, status: "draft" }
+              : p,
+          );
+        else
+          n.records = n.records.map((r) =>
+            r.id === a.p_id
+              ? { ...r, deleted_at: a.p_deleted ? now : null, shared: false }
+              : r,
+          );
+      }
+      if (fn === "save_member_prices") {
+        n.member_prices = n.member_prices.filter(
+          (p) => p.member_id !== a.p_member,
+        );
+        n.member_prices.push({
+          id,
+          member_id: String(a.p_member),
+          single_price: a.p_single === null ? null : Number(a.p_single),
+          monthly_price: a.p_monthly === null ? null : Number(a.p_monthly),
+          currency: String(a.p_currency),
+          updated_at: now,
+        });
+      }
       return n;
     });
   }
   const commit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!dialog || busy) return;
-    const values = Object.fromEntries(new FormData(e.currentTarget)) as Record<
-      string,
-      string
-    >;
+    const formData = new FormData(e.currentTarget);
+    const submitter = (e.nativeEvent as SubmitEvent).submitter;
+    if (submitter instanceof HTMLButtonElement && submitter.name)
+      formData.set(submitter.name, submitter.value);
+    const values = Object.fromEntries(formData) as Record<string, string>;
     setBusy(true);
     setError("");
     try {
@@ -749,8 +805,10 @@ export default function Studio() {
   function editPlan(plan?: Plan, member?: string) {
     setDialog({
       title: plan ? "编辑训练计划" : "制定专属训练计划",
+      publication: true,
+      submit: plan?.status === "published" ? "更新并发布" : "发布给学员",
       description: plan
-        ? `归属学员：${name(plan.member_id)}。发布后，学员会看到此计划。`
+        ? `归属学员：${name(plan.member_id)}。保存草稿仅教练可见；发布后学员可见并收到通知。已发布内容保存为草稿后将对学员隐藏。`
         : "每份计划仅对指定学员开放。发布新计划后，旧计划自动归档。",
       fields: [
         ...(!plan ? [memberField(member)] : []),
@@ -768,12 +826,6 @@ export default function Studio() {
           required: true,
           hint: "可按训练日填写动作、组数、次数、休息时间和注意事项。",
         },
-        {
-          name: "p_publish",
-          label: "立即发布给学员，并加入邮件通知队列",
-          type: "checkbox",
-          value: plan?.status === "published",
-        },
       ],
       action: (v) =>
         mutate("save_plan", {
@@ -781,16 +833,18 @@ export default function Studio() {
           p_id: plan?.id || null,
           p_title: v.p_title,
           p_content: v.p_content,
-          p_publish: v.p_publish === "on",
+          p_publish: v.intent === "publish",
         }),
     });
   }
   function editRecord(record?: RecordEntry, member?: string) {
     setDialog({
       title: record ? "编辑训练档案" : "添加训练档案",
+      publication: true,
+      submit: record?.shared ? "更新并发布" : "发布给学员",
       description: record
-        ? `归属学员：${name(record.member_id)}`
-        : "未勾选共享时，记录仅教练可见。",
+        ? `归属学员：${name(record.member_id)}。保存草稿仅教练可见，发布后只有这位学员可见。`
+        : "保存草稿仅教练可见；发布后只有指定学员可见。",
       fields: [
         ...(!record ? [memberField(member)] : []),
         {
@@ -824,12 +878,6 @@ export default function Studio() {
           type: "textarea",
           value: record?.notes,
         },
-        {
-          name: "p_shared",
-          label: "共享给这位学员",
-          type: "checkbox",
-          value: record?.shared || false,
-        },
       ],
       action: (v) =>
         mutate("save_record", {
@@ -839,7 +887,72 @@ export default function Studio() {
           p_weight: v.p_weight ? Number(v.p_weight) : null,
           p_fat: v.p_fat ? Number(v.p_fat) : null,
           p_notes: v.p_notes,
-          p_shared: v.p_shared === "on",
+          p_shared: v.intent === "publish",
+        }),
+    });
+  }
+  function setTrainingDeleted(
+    kind: "plan" | "record",
+    id: string,
+    deleted: boolean,
+  ) {
+    setDialog({
+      title: deleted ? "删除这份内容" : "恢复为草稿",
+      description: deleted
+        ? "删除后学员将无法查看，可在「已删除」中恢复为草稿。"
+        : "恢复后只有教练可见，需要再次发布才会对学员显示。",
+      fields: [],
+      submit: deleted ? "确认删除" : "恢复为草稿",
+      action: () =>
+        mutate("set_training_deleted", {
+          p_kind: kind,
+          p_id: id,
+          p_deleted: deleted,
+        }),
+    });
+  }
+  function editMemberPrice(memberId: string) {
+    const price = data.member_prices.find((p) => p.member_id === memberId);
+    setDialog({
+      title: `设置 ${name(memberId)} 的专属价格`,
+      description:
+        "只有你和这位学员能看到。包月不限次数；留空表示尚未设置。当前不会收款。",
+      submit: "保存专属价格",
+      fields: [
+        {
+          name: "single",
+          label: "单次训练金额",
+          type: "number",
+          value: price?.single_price ?? "",
+          min: 0,
+          max: 999999.99,
+        },
+        {
+          name: "monthly",
+          label: "包月金额（不限次数）",
+          type: "number",
+          value: price?.monthly_price ?? "",
+          min: 0,
+          max: 999999.99,
+        },
+        {
+          name: "currency",
+          label: "币种",
+          type: "select",
+          value: price?.currency || "USD",
+          required: true,
+          options: ["USD", "CNY", "CAD", "AUD", "EUR", "GBP"].map((v) => ({
+            value: v,
+            label: v,
+          })),
+        },
+      ],
+      action: (v) =>
+        mutate("save_member_prices", {
+          p_member: memberId,
+          p_single: v.single === "" ? null : Number(v.single),
+          p_monthly: v.monthly === "" ? null : Number(v.monthly),
+          p_currency: v.currency,
         }),
     });
   }
@@ -1208,11 +1321,18 @@ export default function Studio() {
     )
     .sort((a, b) => a.slots.starts_at.localeCompare(b.slots.starts_at));
   const ownPlans = data.plans.filter(
-    (p) => coach || (p.member_id === current.id && p.status !== "draft"),
+    (p) =>
+      coach ||
+      (!p.deleted_at && p.member_id === current.id && p.status !== "draft"),
   );
   const ownRecords = data.records.filter(
-    (r) => coach || (r.member_id === current.id && r.shared),
+    (r) => coach || (!r.deleted_at && r.member_id === current.id && r.shared),
   );
+  const recordMatchesFilter = (r: RecordEntry) =>
+    filter === "deleted"
+      ? !!r.deleted_at
+      : !r.deleted_at &&
+        (filter === "all" || (filter === "published" ? r.shared : !r.shared));
   const visibleReferrals = data.referrals.filter(
     (r) => coach || r.referrer_id === current.id,
   );
@@ -1977,6 +2097,12 @@ export default function Studio() {
                                 计划
                               </button>
                               <button
+                                className="text-btn"
+                                onClick={() => editMemberPrice(m.id)}
+                              >
+                                专属价格
+                              </button>
+                              <button
                                 className="text-btn muted"
                                 onClick={() =>
                                   setDialog({
@@ -2014,7 +2140,12 @@ export default function Studio() {
                     ["all", "全部计划"],
                     ["published", "当前计划"],
                     ["archived", "历史计划"],
-                    ...(coach ? [["draft", "草稿"]] : []),
+                    ...(coach
+                      ? [
+                          ["draft", "草稿"],
+                          ["deleted", "已删除"],
+                        ]
+                      : []),
                   ].map(([id, label]) => (
                     <button
                       key={id}
@@ -2044,7 +2175,10 @@ export default function Studio() {
                 {ownPlans
                   .filter(
                     (p) =>
-                      (filter === "all" || p.status === filter) &&
+                      (filter === "deleted"
+                        ? !!p.deleted_at
+                        : !p.deleted_at &&
+                          (filter === "all" || p.status === filter)) &&
                       (memberFilter === "all" || p.member_id === memberFilter),
                   )
                   .map((p) => (
@@ -2053,7 +2187,7 @@ export default function Studio() {
                         <span className="small-icon">
                           <Dumbbell />
                         </span>
-                        <Badge value={p.status} />
+                        <Badge value={p.deleted_at ? "已删除" : p.status} />
                       </div>
                       <h2>{p.title}</h2>
                       <p className="muted">
@@ -2064,15 +2198,29 @@ export default function Studio() {
                       <div className="plan-footer">
                         <span>
                           <ShieldCheck size={14} />
-                          专属计划 · 仅指定学员可见
+                          {p.deleted_at || p.status === "draft"
+                            ? "仅教练可见"
+                            : "专属计划 · 仅指定学员可见"}
                         </span>
                         {coach && (
-                          <button
-                            className="text-btn"
-                            onClick={() => editPlan(p)}
-                          >
-                            编辑计划
-                          </button>
+                          <div className="row gap wrap">
+                            {!p.deleted_at && (
+                              <button
+                                className="text-btn"
+                                onClick={() => editPlan(p)}
+                              >
+                                编辑计划
+                              </button>
+                            )}
+                            <button
+                              className="text-btn"
+                              onClick={() =>
+                                setTrainingDeleted("plan", p.id, !p.deleted_at)
+                              }
+                            >
+                              {p.deleted_at ? "恢复为草稿" : "删除"}
+                            </button>
+                          </div>
                         )}
                       </div>
                     </article>
@@ -2080,7 +2228,10 @@ export default function Studio() {
               </div>
               {!ownPlans.some(
                 (p) =>
-                  (filter === "all" || p.status === filter) &&
+                  (filter === "deleted"
+                    ? !!p.deleted_at
+                    : !p.deleted_at &&
+                      (filter === "all" || p.status === filter)) &&
                   (memberFilter === "all" || p.member_id === memberFilter),
               ) && (
                 <div className="panel">
@@ -2100,8 +2251,8 @@ export default function Studio() {
               <div className="toolbar outside">
                 <p className="muted">
                   {coach
-                    ? "训练档案默认仅你可见，可选择共享给对应学员。"
-                    : "以下为教练共享给你的训练记录。"}
+                    ? "草稿仅你可见；发布后只有对应学员可见。"
+                    : "以下为教练发布给你的训练记录。"}
                 </p>
                 {coach && (
                   <select
@@ -2118,11 +2269,31 @@ export default function Studio() {
                   </select>
                 )}
               </div>
+              {coach && (
+                <div className="segmented spaced">
+                  {[
+                    ["all", "全部档案"],
+                    ["draft", "草稿"],
+                    ["published", "已发布"],
+                    ["deleted", "已删除"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={filter === value ? "active" : ""}
+                      onClick={() => setFilter(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="records-list">
                 {ownRecords
                   .filter(
                     (r) =>
-                      memberFilter === "all" || r.member_id === memberFilter,
+                      (memberFilter === "all" ||
+                        r.member_id === memberFilter) &&
+                      recordMatchesFilter(r),
                   )
                   .sort((a, b) => b.recorded_on.localeCompare(a.recorded_on))
                   .map((r) => (
@@ -2133,7 +2304,11 @@ export default function Studio() {
                         <span
                           className={`badge ${r.shared ? "confirmed" : "draft"}`}
                         >
-                          {r.shared ? "已与学员共享" : "仅教练可见"}
+                          {r.deleted_at
+                            ? "已删除"
+                            : r.shared
+                              ? "已发布"
+                              : "草稿 · 仅教练"}
                         </span>
                       </div>
                       <div className="record-body">
@@ -2158,18 +2333,32 @@ export default function Studio() {
                         </p>
                       </div>
                       {coach && (
-                        <button
-                          className="text-btn"
-                          onClick={() => editRecord(r)}
-                        >
-                          编辑
-                        </button>
+                        <div className="row gap wrap">
+                          {!r.deleted_at && (
+                            <button
+                              className="text-btn"
+                              onClick={() => editRecord(r)}
+                            >
+                              编辑
+                            </button>
+                          )}
+                          <button
+                            className="text-btn"
+                            onClick={() =>
+                              setTrainingDeleted("record", r.id, !r.deleted_at)
+                            }
+                          >
+                            {r.deleted_at ? "恢复为草稿" : "删除"}
+                          </button>
+                        </div>
                       )}
                     </article>
                   ))}
               </div>
               {!ownRecords.some(
-                (r) => memberFilter === "all" || r.member_id === memberFilter,
+                (r) =>
+                  (memberFilter === "all" || r.member_id === memberFilter) &&
+                  recordMatchesFilter(r),
               ) && (
                 <div className="panel">
                   <Empty text="还没有训练记录" />
@@ -2489,63 +2678,98 @@ export default function Studio() {
               <div className="notice">
                 <Wallet size={20} />
                 <div>
-                  <strong>在线支付即将开放</strong>
+                  <strong>
+                    {coach ? "按学员设置专属价格" : "你的专属课程方案"}
+                  </strong>
                   <p>
-                    目前可查看课程方案；价格及购买安排请与教练确认。Stripe
-                    连接完成前，本页面不会收取任何费用。
+                    单次训练与不限次数包月。金额只对本人和教练可见，在线支付尚未开放。
                   </p>
                 </div>
               </div>
-              <div className="package-grid">
-                {data.packages
-                  .filter((p) => coach || p.active)
-                  .map((p, i) => (
-                    <article
-                      key={p.id}
-                      className={`package-card ${i === 1 ? "featured" : ""}`}
-                    >
-                      <span className="eyebrow">
-                        {String(p.sessions).padStart(2, "0")} SESSIONS
-                      </span>
-                      <h2>{p.title}</h2>
-                      <p>{p.description}</p>
-                      <div className="price">
-                        {p.price === null
-                          ? "价格待定"
-                          : new Intl.NumberFormat("en-US", {
-                              style: "currency",
-                              currency: p.currency,
-                            }).format(p.price)}
-                        <small> / {p.sessions} 节</small>
-                      </div>
-                      <div className="package-benefits">
-                        <span>
-                          <Check size={17} />
-                          一对一私教指导
-                        </span>
-                        <span>
-                          <Check size={17} />
-                          个人训练计划
-                        </span>
-                        <span>
-                          <Check size={17} />
-                          专属训练档案
-                        </span>
-                      </div>
-                      <button className="btn full" disabled>
-                        在线支付尚未开放
-                      </button>
-                      {coach && (
-                        <button
-                          className="text-btn full"
-                          onClick={() => editPackage(p)}
-                        >
-                          编辑课程方案{!p.active ? "（已隐藏）" : ""}
+              {coach ? (
+                <section className="panel">
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>学员</th>
+                          <th>单次训练</th>
+                          <th>不限次数包月</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {members.map((m) => {
+                          const p = data.member_prices.find(
+                            (p) => p.member_id === m.id,
+                          );
+                          return (
+                            <tr key={m.id}>
+                              <td>{m.full_name}</td>
+                              <td>
+                                {formatPrice(p?.single_price, p?.currency)}
+                              </td>
+                              <td>
+                                {formatPrice(p?.monthly_price, p?.currency)}
+                              </td>
+                              <td>
+                                <button
+                                  className="text-btn"
+                                  onClick={() => editMemberPrice(m.id)}
+                                >
+                                  设置价格
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!members.length && (
+                    <Empty text="学员注册后，可在这里分别设置价格" />
+                  )}
+                </section>
+              ) : (
+                <div className="package-grid">
+                  {[
+                    {
+                      title: "单次训练",
+                      key: "single_price" as const,
+                      unit: "次",
+                      description: "一次专属私教训练",
+                    },
+                    {
+                      title: "不限次数包月",
+                      key: "monthly_price" as const,
+                      unit: "月",
+                      description: "包月内不限训练次数，仍需预约教练开放的时段",
+                    },
+                  ].map((plan) => {
+                    const p = data.member_prices.find(
+                      (p) => p.member_id === current.id,
+                    );
+                    return (
+                      <article key={plan.key} className="package-card">
+                        <h2>{plan.title}</h2>
+                        <p>{plan.description}</p>
+                        <div className="price">
+                          {formatPrice(p?.[plan.key], p?.currency)}
+                          <small> / {plan.unit}</small>
+                        </div>
+                        <p>
+                          {p?.[plan.key] == null
+                            ? "教练会为你单独设置金额，请联系教练。"
+                            : "这是教练为你设置的专属金额。"}
+                        </p>
+                        <button className="btn full" disabled>
+                          在线支付尚未开放
                         </button>
-                      )}
-                    </article>
-                  ))}
-              </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
           {tab === "settings" && (
@@ -2770,6 +2994,94 @@ export default function Studio() {
                 <section className="panel settings-card full-span">
                   <div className="section-head">
                     <div>
+                      <h2>Resend 联系人同步</h2>
+                      <p className="muted">
+                        已验证邮箱的学员自动同步到专属分组；关闭通知或停用账号会移出该分组。不会更改其他业务的全局退订设置。
+                      </p>
+                    </div>
+                    <button
+                      className="btn secondary small"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (demo) {
+                          notify("演示模式不同步联系人");
+                          return;
+                        }
+                        setBusy(true);
+                        setError("");
+                        try {
+                          await mutate("retry_contact_sync", {});
+                          const {
+                            data: { session: s },
+                          } = await supabase!.auth.getSession();
+                          const response = await fetch("/api/contacts", {
+                            method: "POST",
+                            headers: {
+                              Authorization: `Bearer ${s?.access_token}`,
+                            },
+                          });
+                          const result = await response.json();
+                          if (!response.ok)
+                            throw new Error(result.error || "同步失败");
+                          if (!result.configured)
+                            throw new Error(
+                              "请先在 Vercel 配置联系人管理 Key 和 Segment ID",
+                            );
+                          notify(
+                            `本轮同步 ${result.synced} 位，失败 ${result.failed} 位。其余将自动继续。`,
+                          );
+                          await load();
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : "同步失败");
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      同步 / 重试
+                    </button>
+                  </div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>学员</th>
+                          <th>同步状态</th>
+                          <th>分组</th>
+                          <th>最近同步</th>
+                          <th>说明</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.contact_sync.map((c) => (
+                          <tr key={c.id}>
+                            <td>{name(c.member_id)}</td>
+                            <td>
+                              <Badge value={c.state} />
+                            </td>
+                            <td>
+                              {c.in_segment ? "已加入" : "未加入 / 已移出"}
+                            </td>
+                            <td>
+                              {c.synced_at
+                                ? displayTime(c.synced_at, zone, "MM.dd HH:mm")
+                                : "—"}
+                            </td>
+                            <td>{c.last_error || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!data.contact_sync.length && (
+                    <Empty text="学员验证邮箱后，会在这里显示同步进度" />
+                  )}
+                </section>
+              )}
+              {coach && (
+                <section className="panel settings-card full-span">
+                  <div className="section-head">
+                    <div>
                       <h2>邮件投递记录</h2>
                       <p className="muted">
                         预约通知自动入队，定时任务负责投递；提醒将在课程开始前
@@ -2881,79 +3193,4 @@ export default function Studio() {
       {flash}
     </div>
   );
-  function editPackage(p: Package) {
-    setDialog({
-      title: "编辑课程方案",
-      description: "Stripe 尚未连接，保存价格不会触发收款。",
-      fields: [
-        { name: "title", label: "方案名称", value: p.title, required: true },
-        {
-          name: "sessions",
-          label: "课时数",
-          type: "number",
-          value: p.sessions,
-          min: 1,
-          max: 999,
-          required: true,
-        },
-        {
-          name: "price",
-          label: "方案总价（留空显示价格待定）",
-          type: "number",
-          value: p.price ?? "",
-          min: 0,
-        },
-        {
-          name: "currency",
-          label: "币种",
-          type: "select",
-          value: p.currency,
-          options: ["USD", "CNY", "CAD", "AUD", "EUR", "GBP"].map((z) => ({
-            value: z,
-            label: z,
-          })),
-          required: true,
-        },
-        {
-          name: "description",
-          label: "方案说明",
-          type: "textarea",
-          value: p.description,
-        },
-        {
-          name: "active",
-          label: "向学员展示",
-          type: "checkbox",
-          value: p.active,
-        },
-      ],
-      action: async (v) => {
-        const patch = {
-          title: v.title,
-          sessions: Number(v.sessions),
-          price: v.price === "" ? null : Number(v.price),
-          currency: v.currency,
-          description: v.description,
-          active: v.active === "on",
-        };
-        if (!Number.isInteger(patch.sessions) || patch.sessions <= 0)
-          throw new Error("课时数必须是正整数");
-        if (demo) {
-          setData((d) => ({
-            ...d,
-            packages: d.packages.map((x) =>
-              x.id === p.id ? { ...x, ...patch } : x,
-            ),
-          }));
-          return;
-        }
-        const { error } = await supabase!
-          .from("packages")
-          .update(patch)
-          .eq("id", p.id);
-        if (error) throw error;
-        await load();
-      },
-    });
-  }
 }

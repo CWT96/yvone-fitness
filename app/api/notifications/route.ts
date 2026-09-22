@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "node:crypto";
+import { syncContacts } from "@/lib/contact-sync";
 import { emailContent } from "@/lib/email";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,6 +14,7 @@ function secretEqual(a: string, b: string) {
   );
 }
 async function processJobs(request: Request) {
+  const started = Date.now();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL,
     key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key)
@@ -94,6 +96,15 @@ async function processJobs(request: Request) {
         live.state !== "processing" ||
         !recipient?.active ||
         !recipient.email_notifications;
+      if (job.plan_id) {
+        const { data: plan, error: planError } = await db
+          .from("plans")
+          .select("status,deleted_at")
+          .eq("id", job.plan_id)
+          .single();
+        if (planError) throw planError;
+        skip ||= !!plan.deleted_at || plan.status !== "published";
+      }
       if (job.kind === "reminder") {
         const { data: appointment, error: appointmentError } = await db
           .from("appointments")
@@ -180,7 +191,22 @@ async function processJobs(request: Request) {
     // Resend's default rate is limited; remain below two requests per second.
     await new Promise((resolve) => setTimeout(resolve, 550));
   }
-  return Response.json(counts, { headers: { "Cache-Control": "no-store" } });
+  let contacts;
+  if (
+    process.env.RESEND_CONTACTS_API_KEY &&
+    process.env.RESEND_SEGMENT_ID &&
+    Date.now() - started < 20000
+  ) {
+    try {
+      contacts = await syncContacts(db, started + 50000);
+    } catch {
+      contacts = { error: "联系人同步失败，请检查队列及配置" };
+    }
+  }
+  return Response.json(
+    { ...counts, ...(contacts ? { contacts } : {}) },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 export const GET = processJobs;
 export const POST = processJobs;

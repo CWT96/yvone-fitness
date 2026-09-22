@@ -39,6 +39,25 @@ export function demoData(): Data {
     available: ![0, 3, 6].includes(i),
   }));
   return {
+    contact_sync: [],
+    member_prices: [
+      {
+        id: "price-0",
+        member_id: "member-0",
+        single_price: 90,
+        monthly_price: 600,
+        currency: "USD",
+        updated_at: future(-1, 0),
+      },
+      {
+        id: "price-1",
+        member_id: "member-1",
+        single_price: 100,
+        monthly_price: 700,
+        currency: "USD",
+        updated_at: future(-1, 0),
+      },
+    ],
     profiles: demoProfiles,
     slots,
     appointments: [0, 3, 6].map((n, i) => ({

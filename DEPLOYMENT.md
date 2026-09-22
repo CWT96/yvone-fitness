@@ -14,6 +14,14 @@
 6. Authentication → Providers / Sign In：开启 Email 注册、保留 Confirm email；关闭 Anonymous sign-ins，不启用未用到的 OAuth。邀请码约束由数据库触发器执行，不是前端控制。
 7. 暂不要在 Auth 后台直接新增用户：本项目的注册触发器会拒绝没有邀请码的创建请求。
 
+## 已有网站：内容、价格和联系人更新
+
+只运行 `supabase/migrations/202609220002_content_pricing_contacts.sql`，不要重跑初始化或 Cron。运行后再发布配套网页。迁移保留旧套餐数据，但只允许教练读取；每位学员的新价格需单独设置，不自动沿用公共价格。
+
+新增 Production 变量：`RESEND_CONTACTS_API_KEY`（独立 Full access Key，保密）和 `RESEND_SEGMENT_ID`（工作室分组 ID）。原 `RESEND_API_KEY` 继续负责发信。联系人同步复用现有每分钟任务，每轮最多处理两位已验证学员；失败会重试并在后台显示。Full access 是账号范围权限，只放在服务端。
+
+只同步学员姓名、邮箱及分组归属，不同步价格、训练计划或档案。已有联系人不改姓名和全局退订状态；通知关闭/停用仅移出工作室分组。不会发送营销广播。`/api/contacts` 仅允许有效教练手动触发。
+
 ## 2. 配置 Resend 和注册验证邮件
 
 网页可以使用 Vercel 默认网址，但对真实学员发邮件需要你控制的发信域名。可以先借用已有域名的子域名，例如 `notify.你的域名`，不必把整个网站搬过去。

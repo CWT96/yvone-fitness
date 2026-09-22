@@ -29,6 +29,15 @@ test("database authorization, registration, booking and delivery rules", async (
   );
   await db.exec(emailDetailsMigration);
   await db.exec(emailDetailsMigration);
+  await db.exec(
+    await readFile(
+      new URL(
+        "../supabase/migrations/202609220002_content_pricing_contacts.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
   async function as<T = Record<string, unknown>>(
     uid: string,
     sql: string,

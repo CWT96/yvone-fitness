@@ -29,6 +29,7 @@ export type Appointment = {
   slots: { starts_at: string; ends_at: string };
 };
 export type Plan = {
+  deleted_at?: string | null;
   id: string;
   member_id: string;
   title: string;
@@ -37,6 +38,7 @@ export type Plan = {
   created_at: string;
 };
 export type RecordEntry = {
+  deleted_at?: string | null;
   id: string;
   member_id: string;
   recorded_on: string;
@@ -98,7 +100,25 @@ export type Settings = {
   allow_referral_signup: boolean;
   location: string;
 };
+export type MemberPrice = {
+  id: string;
+  member_id: string;
+  single_price: number | null;
+  monthly_price: number | null;
+  currency: string;
+  updated_at: string;
+};
+export type ContactSync = {
+  id: string;
+  member_id: string;
+  state: string;
+  synced_at: string | null;
+  last_error: string | null;
+  in_segment: boolean;
+};
 export type Data = {
+  member_prices: MemberPrice[];
+  contact_sync: ContactSync[];
   profiles: Profile[];
   slots: Slot[];
   appointments: Appointment[];

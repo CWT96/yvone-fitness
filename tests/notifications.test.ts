@@ -10,6 +10,8 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
     "RESEND_FROM",
     "SITE_URL",
     "CRON_SECRET",
+    "RESEND_CONTACTS_API_KEY",
+    "RESEND_SEGMENT_ID",
   ] as const;
   const before = Object.fromEntries(
     names.map((key) => [key, process.env[key]]),
@@ -22,6 +24,8 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
     SITE_URL: "https://studio.example.test",
     CRON_SECRET: "fake-cron-secret-for-local-testing-only",
   });
+  delete process.env.RESEND_CONTACTS_API_KEY;
+  delete process.env.RESEND_SEGMENT_ID;
   const originalFetch = globalThis.fetch;
   let role = "member",
     notifications = true,
@@ -52,6 +56,8 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
         aud: "authenticated",
         email: "test@example.test",
       });
+    if (url.pathname === "/rest/v1/plans")
+      return json({ status: "draft", deleted_at: "2026-09-22T00:00:00Z" });
     if (url.pathname === "/rest/v1/settings")
       return json({ studio_name: "Yvone Fitness" });
     if (url.pathname === "/rest/v1/profiles")
@@ -125,6 +131,19 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
         assert.equal(emails[0].headers.get("Idempotency-Key"), "yvone/job-1");
         assert.deepEqual(emails[0].body.to, ["member@example.test"]);
         assert.ok(changes.some((c) => c.state === "sent"));
+      },
+    );
+    await t.test(
+      "deleted or unpublished plans skip pending announcement emails",
+      async () => {
+        queue = [{ ...job(), plan_id: "removed-plan" }];
+        const beforeCount = emails.length;
+        assert.deepEqual(
+          await (await POST(request(process.env.CRON_SECRET))).json(),
+          { sent: 0, skipped: 1, failed: 0 },
+        );
+        assert.equal(emails.length, beforeCount);
+        queue = [job()];
       },
     );
     await t.test(
