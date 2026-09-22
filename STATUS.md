@@ -4,7 +4,7 @@
 
 - 正式网址：https://www.yvonnefitness.com 。https://yvonnefitness.com 已正确 308 跳转至 www；用户确认旧缓存问题已解决。备用：https://yvone-fitness.vercel.app 。
 - Vercel：https://vercel.com/vinclo/yvone-fitness 。独立项目，未修改原 vinclo 项目的代码、域名或配置。
-- 当前已验证部署：dpl_EJD6dGtNGzpVfy9fLtyZJrMGHVTT（READY）。
+- 已验证的 Git 自动部署：dpl_2CZbn3qURHHNf2TE6yzyYXLavwNv（READY、production、source=git），对应 main 提交 663e7dc2a8a45e0d36da9b0e6f5b4b25c04b5b53。
 - GitHub：https://github.com/CWT96/yvone-fitness 。用户明确要求暂时 Public，之后自行改 Private，仍为待办。
 - 源码备份：../Yvone-Fitness-source.zip（Git archive，不含密钥及依赖）。
 - 工作室名称 Yvone Fitness；教练初始邮箱 wt.cong96@gmail.com；业务时区 America/Los_Angeles。
@@ -36,7 +36,7 @@
 
 ## 仍待完成或确认
 
-- Vercel Git 连接：已通过 API 确认连接 CWT96/yvone-fitness，生产分支 main；正以本次操作说明和验收记录提交验证自动部署。
+- Vercel Git 连接已完成：CWT96/yvone-fitness，生产分支 main；已通过普通文档提交验证 Git 自动生产部署 READY。后续数据库迁移仍需单独运行。
 - GitHub Actions：当前凭据缺 workflow 权限，模板在 scripts/github-actions-ci.yml，尚未启用；不是现有网站运行的前提。
 - ACCEPTANCE.md 中其余远端验收未全部覆盖，例如密码恢复、真实教练代预约、同一时段并发预约、账号停用/恢复、课前提醒及手机布局。不要将本地测试宣称为云端这些项目已通过。
 - Stripe 按用户要求只做购买页面，未接入收款。
@@ -44,4 +44,4 @@
 
 ## 下一步
 
-推荐与训练计划/档案隔离已获用户确认。GitHub → Vercel 仓库连接已核实，正在验证自动部署；操作说明在 操作说明.md。随后说明剩余验收范围，避免继续重复已通过的手工测试。所有私密 Key 直接填平台，不在聊天里发送。
+核心业务实际验收及 Git 自动部署验证通过；操作说明在 操作说明.md。其余尚未覆盖的远端验收范围已在上方列明，不能宣称全部完成。避免重复已通过的手工测试。所有私密 Key 直接填平台，不在聊天里发送。
