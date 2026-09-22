@@ -1,39 +1,47 @@
-# 交接状态 · 2026-09-21
+# 交接状态 · 2026-09-22
 
-## 当前可查看
+## 当前服务
 
-- 已发布真实登录入口：https://yvonnefitness.com （备用：https://yvone-fitness.vercel.app；教练账号及邮件连接仍待完成）
-- Vercel 项目：https://vercel.com/vinclo/yvone-fitness
-- 部署状态：READY；独立项目 `yvone-fitness`，未修改原 `vinclo` 项目的代码、域名或配置。
-- 源码已上传 https://github.com/CWT96/yvone-fitness ，并本地 Git 提交；`../Yvone-Fitness-source.zip` 是不含密钥和依赖文件的源码备份。
-- 38 项本地数据库/辅助规则测试通过，类型检查通过；最新云端正式构建通过，已在浏览器验证改期时段列表、必须手动选择及正确保存。
-- 已通过演示操作验证教练代预约、留言保存、预约计数更新、学员端专属计划展示。
+- 正式网址：https://www.yvonnefitness.com 。https://yvonnefitness.com 已正确 308 跳转至 www；用户确认旧缓存问题已解决。备用：https://yvone-fitness.vercel.app 。
+- Vercel：https://vercel.com/vinclo/yvone-fitness 。独立项目，未修改原 vinclo 项目的代码、域名或配置。
+- 当前已验证部署：dpl_EJD6dGtNGzpVfy9fLtyZJrMGHVTT（READY）。
+- GitHub：https://github.com/CWT96/yvone-fitness 。用户明确要求暂时 Public，之后自行改 Private，仍为待办。
+- 源码备份：../Yvone-Fitness-source.zip（Git archive，不含密钥及依赖）。
+- 工作室名称 Yvone Fitness；教练初始邮箱 wt.cong96@gmail.com；业务时区 America/Los_Angeles。
 
-## 尚未完成的外部连接
+## 已连接的平台
 
-- Supabase 项目已创建：zhyxlzalrpwfsqpxfftt；Project URL 为 https://zhyxlzalrpwfsqpxfftt.supabase.co 。用户提供的 Publishable key 已验证有效并保存至被 Git 忽略的 .env.local，未写入源码。
-- 用户已执行初始化 SQL。只读抽查 profiles、settings、plans 表均已存在，未登录请求返回 42501 权限拒绝。Email 注册和 Confirm email 均开启。
-- 已在独立 Vercel 项目 yvone-fitness 的 Production 环境保存 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 和 SITE_URL。重新部署状态 READY（dpl_FDRyuA9RW6APxbYwYn6NY7Z1YwJT），已在浏览器确认公网显示真实登录界面。
-- 数据库迁移已由用户执行；用户确认教练邀请码已生成并自行保存。用户已确认保存 Auth Site URL 与六个 Redirect URLs，并报告教练注册及验证成功。
-- 用户已在 Squarespace 购买域名，并纠正其拼写为 yvonnefitness.com（不是 yonnefitness.com，也不是项目名 yvone-fitness）。用户报告 Resend 域名已 Verified，并开启 Receive。
-- 已将 yvonnefitness.com 和 www.yvonnefitness.com 添加至独立 Vercel 项目 yvone-fitness。两者均通过 Vercel domains verify；权威 DNS 已确认 www 的新记录。直接访问新服务器已验证主域名 HTTPS 证书有效、HTTP 200 且内容为本站；部分本地 DNS 缓存仍可能暂时指向 Squarespace。
-- Vercel domains verify 返回的推荐记录为：A @ → 216.150.1.1；A @ → 216.150.16.1；CNAME www → 217075c645c4eec7.vercel-dns-016.com。使用这组具体推荐值，而非 inspect 输出的旧通用地址。
-- 用户已更新 Squarespace 网站 DNS。Production 的 SITE_URL 已改为 https://yvonnefitness.com，并重新部署成功：dpl_CbV3xE5fE3MQu9jrFJmCR9LpCfan（READY）。当前公网主域名返回 308 跳转至 https://www.yvonnefitness.com/，www 返回 HTTP 200，证书验证成功。
-- 用户已确认 Resend 使用 contact.yvonnefitness.com 子域名。权威 DNS 已查到 resend._domainkey.contact.yvonnefitness.com 的 DKIM 公钥，以及 send.contact.yvonnefitness.com 指向 send.forge.rmta.net 的记录。发件地址应使用 appointments@contact.yvonnefitness.com；用户此前报告 Verified，实际发信测试仍待完成。
-- 用户已确认完成 Yvone Fitness 专用 Resend API Key 及 Supabase Auth SMTP 设置，并报告教练注册验证成功。Vercel Production 已保存全部七项环境变量（只核对名称，未读取用户密钥），包括 RESEND_API_KEY、SUPABASE_SERVICE_ROLE_KEY、RESEND_FROM 和 CRON_SECRET。最新部署 dpl_AMFNhJvHo2pV1iQKTpimdWfQmUyt 为 READY。使用专用任务密钥测试通知接口返回 200，sent/skipped/failed 均为 0，确认数据库队列调用成功；实际预约邮件收取仍待测试。vinclo 原有 Key 和项目配置保持不变。
-- Cron 私密设置已在本机准备：.env.cron-secret 与 .env.email-cron.sql（权限 0600、Git 忽略，禁止打印到聊天或提交）。后者使用 https://www.yvonnefitness.com 以避免定时请求经过域名跳转。用户已确认在 Supabase SQL Editor 执行成功；实际自动发送及定时运行结果待真实预约验证。新增 .vercelignore 排除 .env* 等本机文件，已部署。
-- 用户报告主域名仍显示 Squarespace；2026-09-22 03:08 UTC 实测权威 DNS、Cloudflare 和 Google DNS 均为 Vercel 两条 A，无 AAAA。HTTP 跳转 HTTPS；HTTPS 返回 308 至 www，最终 200。当前未发现服务器配置问题，推测用户侧旧缓存；已建议无痕窗口及手机移动网络对照。
-- 用户随后确认主域名访问问题已解决。
-- 用户已按测试步骤完成真实学员注册和预约，并确认预约成功、教练及学员收到自动通知。随后确认改期邮件双方收到、取消和邮件开关正常。用户报告改期界面没有明确时间选项、邮件没有具体时间，两处已修复待用户复测。
-- 改期修复已部署至 dpl_EJD6dGtNGzpVfy9fLtyZJrMGHVTT（READY）：每次打开重新读取可预约时段、直接显示单选列表、不默认选择改期时间、无可用时段明确提示并禁止提交。邮件保留换行。
-- 用户已确认执行 supabase/migrations/202609220001_booking_email_details.sql；后续预约/改期/取消/提醒邮件保存不可变的时间详情、时区、地点、留言或原因。已通过重复迁移、夏令时、历史通知不受后续改期影响等测试。旧邮件不补发，远端新改期邮件尚待用户复测。
-- GitHub 源码已上传；用户明确确认暂时 Public，之后自行改为 Private（待办）。
-- Vercel 自动 Git 连接未获当前集成访问权限，需在新项目 Settings → Git 授权这个仓库；现有网站通过 CLI 已部署，不受影响。
-- GitHub workflow 权限缺失，自动检查尚未启用；模板保存在 scripts/github-actions-ci.yml。
-- Stripe 按要求只完成购买窗口，尚未接入收款。
+- Supabase 项目 zhyxlzalrpwfsqpxfftt，URL https://zhyxlzalrpwfsqpxfftt.supabase.co 。初始迁移及 202609220001_booking_email_details.sql 均已由用户执行。
+- 注册开启邮箱验证，邀请码校验在数据库注册触发器执行；学员推荐码可直接用于注册。Supabase Auth Site URL 和主域名、www、备用域名的 callback/recovery 地址均由用户保存。
+- Vercel Production 七项变量已齐全：NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY、SUPABASE_SERVICE_ROLE_KEY、RESEND_API_KEY、RESEND_FROM、SITE_URL、CRON_SECRET。用户私密 Key 直接填入平台，未读取其内容。
+- Resend 使用 contact.yvonnefitness.com；发件人为 Yvone Fitness <appointments@contact.yvonnefitness.com>。使用独立 Key，未改 vinclo 原 Key。Supabase SMTP 已连接，教练/学员验证邮件成功。
+- Supabase Cron 每分钟调用 https://www.yvonnefitness.com/api/notifications。用户确认 SQL 执行成功，后续真实预约自动邮件成功。
+- 本机私密 .env.cron-secret 和 .env.email-cron.sql 权限 0600，Git 和 Vercel 均排除；禁止打印到聊天或提交。不要重复执行 Cron 初始化脚本。
+- 网站 DNS 保留 Squarespace Nameservers：A @ → 216.150.1.1 和 216.150.16.1；www CNAME → 217075c645c4eec7.vercel-dns-016.com。
 
-公网已切换真实 Supabase 登录模式；用户报告教练注册验证成功，预约通知尚未完成联调，因此还不能作为完成验收的正式服务交付。需继续完成 ACCEPTANCE.md 的真实双账号和邮件验收。响应式 CSS 已实现；浏览器工具的手机视口设置没有实际生效，尚未声称真实手机验收通过。
+## 已验证的功能
+
+以下云端结果来自用户实际操作反馈，不冒充自动端到端测试：
+
+- 教练注册、邮箱验证、登录后台成功。
+- 测试学员注册、真实预约、教练和学员自动收件成功。
+- 改期、取消、邮件开关均通过；关闭学员通知后，教练仍可收到通知。
+- 改期界面修复后复测通过：直接列出时段，必须手动选择，打开时刷新空闲时间，无时段时有明确提示。
+- 新改期邮件包含原时间、新时间、时区和原因，用户确认复测通过。数据库保存操作时的时间内容；旧邮件不补发。
+- 用户确认 A 推荐码注册 B、邮箱验证后推荐数和教练后台记录通过。
+- 用户确认 A 的专属训练计划可查看并收到通知，B 不可见。
+- 用户确认 A 的私密档案对 A/B 都不可见，共享后只有 A 可见。
+- 本地 38 项测试通过：SQL 权限/隔离、预约规则、时间/夏令时、推荐、邮件授权/重试/开关、历史通知内容等。类型检查和 Vercel 正式构建通过。
+- 内置浏览器已验证本机演示的改期选项、不选择时阻止提交、选择后正确保存；正式站未登录，不掌握用户密码。
+
+## 仍待完成或确认
+
+- Vercel Git 连接：已通过 API 确认连接 CWT96/yvone-fitness，生产分支 main；正以本次操作说明和验收记录提交验证自动部署。
+- GitHub Actions：当前凭据缺 workflow 权限，模板在 scripts/github-actions-ci.yml，尚未启用；不是现有网站运行的前提。
+- ACCEPTANCE.md 中其余远端验收未全部覆盖，例如密码恢复、真实教练代预约、同一时段并发预约、账号停用/恢复、课前提醒及手机布局。不要将本地测试宣称为云端这些项目已通过。
+- Stripe 按用户要求只做购买页面，未接入收款。
+- 之后将 GitHub 仓库改 Private（用户明确说晚点改，未授权现在更改）。
 
 ## 下一步
 
-预约自动通知、取消及邮件开关已获用户确认。改期界面/邮件时间修复已部署且用户已执行新增迁移，下一步刷新正式站、确保还有一个未来空闲时段，改期一次，验证手动选择及新邮件原/新时间。然后继续训练计划/档案隔离、推荐和其他 ACCEPTANCE.md 项目，补充 GitHub 自动部署授权。内置浏览器正式站未登录；不掌握用户密码。SMTP 发件人为 Yvone Fitness <appointments@contact.yvonnefitness.com>。服务端密钥直接填入平台，不在聊天里发送。
+推荐与训练计划/档案隔离已获用户确认。GitHub → Vercel 仓库连接已核实，正在验证自动部署；操作说明在 操作说明.md。随后说明剩余验收范围，避免继续重复已通过的手工测试。所有私密 Key 直接填平台，不在聊天里发送。
