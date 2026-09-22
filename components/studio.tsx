@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { configured, supabase } from "@/lib/supabase";
 import { demoData } from "@/lib/demo";
+import { availableBookingSlots } from "@/lib/booking";
 import type {
   Data,
   Profile,
@@ -191,66 +192,98 @@ function DialogView({
         </p>
       )}
       <form onSubmit={onSubmit}>
-        {dialog.fields.map((f) => (
-          <label
-            className={`field ${f.type === "checkbox" ? "check-field" : ""}`}
-            key={f.name}
-          >
-            {f.type === "checkbox" ? (
-              <>
-                <input
-                  name={f.name}
-                  type="checkbox"
-                  defaultChecked={Boolean(f.value)}
-                />
-                <span>{f.label}</span>
-              </>
-            ) : (
-              <>
-                <span>
-                  {f.label}
-                  {f.required && " *"}
-                </span>
-                {f.type === "textarea" ? (
-                  <textarea
-                    name={f.name}
-                    defaultValue={String(f.value ?? "")}
-                    required={f.required}
-                    rows={7}
-                    maxLength={30000}
-                  />
-                ) : f.type === "select" ? (
-                  <select
-                    name={f.name}
-                    defaultValue={String(f.value ?? "")}
-                    required={f.required}
-                  >
-                    <option value="" disabled>
-                      请选择
-                    </option>
-                    {f.options?.map((o) => (
-                      <option value={o.value} key={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
+        {dialog.fields.map((f) =>
+          f.type === "slots" ? (
+            <fieldset className="slot-choices" key={f.name}>
+              <legend>
+                {f.label}
+                {f.required && " *"}
+              </legend>
+              {f.options?.length ? (
+                <div className="slot-choice-list">
+                  {f.options.map((o) => (
+                    <label className="slot-choice" key={o.value}>
+                      <input
+                        type="radio"
+                        name={f.name}
+                        value={o.value}
+                        required={f.required}
+                        defaultChecked={f.value === o.value}
+                      />
+                      <span>{o.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p role="status" className="empty-slots">
+                  {f.hint}
+                </p>
+              )}
+              {!!f.options?.length && (
+                <small>请选择一个时段，再确认保存。</small>
+              )}
+            </fieldset>
+          ) : (
+            <label
+              className={`field ${f.type === "checkbox" ? "check-field" : ""}`}
+              key={f.name}
+            >
+              {f.type === "checkbox" ? (
+                <>
                   <input
                     name={f.name}
-                    type={f.type || "text"}
-                    defaultValue={String(f.value ?? "")}
-                    required={f.required}
-                    min={f.min}
-                    max={f.max}
-                    step={f.type === "number" ? "any" : undefined}
-                    maxLength={f.name === "p_name" ? 80 : 2000}
+                    type="checkbox"
+                    defaultChecked={Boolean(f.value)}
                   />
-                )}
-              </>
-            )}
-            {f.hint && <small>{f.hint}</small>}
-          </label>
-        ))}
+                  <span>{f.label}</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    {f.label}
+                    {f.required && " *"}
+                  </span>
+                  {f.type === "textarea" ? (
+                    <textarea
+                      name={f.name}
+                      defaultValue={String(f.value ?? "")}
+                      required={f.required}
+                      rows={7}
+                      maxLength={30000}
+                    />
+                  ) : f.type === "select" ? (
+                    <select
+                      name={f.name}
+                      defaultValue={String(f.value ?? "")}
+                      required={f.required}
+                    >
+                      <option value="" disabled>
+                        请选择
+                      </option>
+                      {f.options?.map((o) => (
+                        <option value={o.value} key={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      name={f.name}
+                      type={f.type || "text"}
+                      defaultValue={String(f.value ?? "")}
+                      required={f.required}
+                      min={f.min}
+                      max={f.max}
+                      step={f.type === "number" ? "any" : undefined}
+                      maxLength={f.name === "p_name" ? 80 : 2000}
+                    />
+                  )}
+                </>
+              )}
+              {f.hint && <small>{f.hint}</small>}
+            </label>
+          ),
+        )}
         <div className="modal-footer">
           <button
             type="button"
@@ -260,7 +293,15 @@ function DialogView({
           >
             返回
           </button>
-          <button className="btn" disabled={busy}>
+          <button
+            className="btn"
+            disabled={
+              busy ||
+              dialog.fields.some(
+                (f) => f.type === "slots" && !f.options?.length,
+              )
+            }
+          >
             {busy ? "正在保存…" : dialog.submit || "保存"}
           </button>
         </div>
@@ -592,47 +633,68 @@ export default function Studio() {
       setBusy(false);
     }
   };
-  function book(slot?: Slot, existing?: Appointment) {
-    const available = data.slots.filter(
-      (s) => s.available && s.id !== existing?.slot_id,
-    );
-    setDialog({
-      title: existing
-        ? "调整预约时间"
-        : coach
-          ? "为学员预约"
-          : "预约下一次训练",
-      description: `所有课程时间均为 ${zone}。`,
-      fields: [
-        ...(coach && !existing ? [memberField()] : []),
-        {
-          name: "p_slot",
-          label: "训练时间",
-          type: "select",
-          required: true,
-          value: slot?.id || available[0]?.id,
-          options: available.map((s) => ({
-            value: s.id,
-            label: `${displayTime(s.starts_at, zone)} – ${displayTime(s.ends_at, zone, "HH:mm")}`,
-          })),
+  async function book(slot?: Slot, existing?: Appointment) {
+    if (busy) return;
+    setError("");
+    setBusy(true);
+    try {
+      let latestSlots = data.slots;
+      if (!demo && supabase) {
+        const { data: schedule, error } = await supabase.rpc("get_schedule");
+        if (error) throw error;
+        latestSlots = schedule || [];
+        setData((previous) => ({ ...previous, slots: latestSlots }));
+      }
+      const available = availableBookingSlots(latestSlots, existing?.slot_id);
+      setDialog({
+        title: existing
+          ? "调整预约时间"
+          : coach
+            ? "为学员预约"
+            : "预约下一次训练",
+        description: `${existing ? `当前预约：${displayTime(existing.slots.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(existing.slots.ends_at, zone, "HH:mm")}。请选择新的训练时间。` : "请选择训练时间。"} 所有课程时间均为 ${zone}。`,
+        fields: [
+          ...(coach && !existing ? [memberField()] : []),
+          {
+            name: "p_slot",
+            label: "训练时间",
+            type: "slots",
+            required: true,
+            value: existing ? "" : slot?.id || "",
+            hint: coach
+              ? "暂无其他可预约时段。请先返回「教练时间表」开放新的时段，再来预约或改期。"
+              : "教练暂未开放其他可预约时段。请联系教练增加时间后重试；当前预约保持不变。",
+            options: available.map((s) => ({
+              value: s.id,
+              label: `${displayTime(s.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(s.ends_at, zone, "HH:mm")}`,
+            })),
+          },
+          {
+            name: "p_message",
+            label: existing ? "改期原因（选填）" : "给教练的留言（选填）",
+            type: "textarea",
+          },
+        ],
+        submit: existing ? "确认改期" : "确认预约",
+        action: async (v) => {
+          if (!available.some((s) => s.id === v.p_slot))
+            throw new Error("请选择一个可预约的训练时间。");
+          await mutate("manage_booking", {
+            p_action: existing ? "reschedule" : "book",
+            p_slot: v.p_slot,
+            p_appointment: existing?.id || null,
+            p_member: existing?.member_id || v.p_member || current!.id,
+            p_message: v.p_message,
+          });
         },
-        {
-          name: "p_message",
-          label: existing ? "改期原因（选填）" : "给教练的留言（选填）",
-          type: "textarea",
-        },
-      ],
-      submit: existing ? "确认改期" : "确认预约",
-      action: async (v) => {
-        await mutate("manage_booking", {
-          p_action: existing ? "reschedule" : "book",
-          p_slot: v.p_slot,
-          p_appointment: existing?.id || null,
-          p_member: existing?.member_id || v.p_member || current!.id,
-          p_message: v.p_message,
-        });
-      },
-    });
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "暂时无法获取可预约时段，请重试。",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   function cancelBooking(b: Appointment) {
     setDialog({

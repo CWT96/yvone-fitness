@@ -20,6 +20,15 @@ test("database authorization, registration, booking and delivery rules", async (
       "utf8",
     ),
   );
+  const emailDetailsMigration = await readFile(
+    new URL(
+      "../supabase/migrations/202609220001_booking_email_details.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await db.exec(emailDetailsMigration);
+  await db.exec(emailDetailsMigration);
   async function as<T = Record<string, unknown>>(
     uid: string,
     sql: string,
@@ -281,12 +290,54 @@ test("database authorization, registration, booking and delivery rules", async (
     );
   });
   await t.test(
+    "email time labels follow Pacific daylight saving time",
+    async () => {
+      const { rows } = await db.query<{
+        winter: string;
+        summer: string;
+      }>(`select
+      training_time_label('2026-01-10 17:00Z','2026-01-10 18:00Z','America/Los_Angeles') as winter,
+      training_time_label('2026-07-10 16:00Z','2026-07-10 17:00Z','America/Los_Angeles') as summer`);
+      assert.equal(rows[0].winter, "2026-01-10 09:00 – 2026-01-10 10:00");
+      assert.equal(rows[0].summer, "2026-07-10 09:00 – 2026-07-10 10:00");
+    },
+  );
+  await t.test(
     "rescheduling frees the old slot and keeps an immutable event trail",
     async () => {
       await as(A, "select manage_booking('reschedule',$1,$2,null,'工作冲突')", [
         slot2,
         booking,
       ]);
+      const { rows: notices } = await db.query<{
+        body: string;
+        recipient_id: string;
+      }>(
+        "select body,recipient_id from email_jobs where appointment_id=$1 and subject='预约已改期'",
+        [booking],
+      );
+      assert.deepEqual(
+        new Set(notices.map((n) => n.recipient_id)),
+        new Set([A, C]),
+      );
+      for (const notice of notices) {
+        assert.match(notice.body, /原时间：\d{4}-\d{2}-\d{2}/);
+        assert.match(notice.body, /新时间：\d{4}-\d{2}-\d{2}/);
+        assert.match(notice.body, /时区：America\/Los_Angeles/);
+        assert.match(notice.body, /原因：工作冲突/);
+        assert.match(notice.body, /地点：Studio/);
+      }
+      const confirmation = (
+        await db.query<{ body: string }>(
+          "select body from email_jobs where appointment_id=$1 and subject='预约已确认' limit 1",
+          [booking],
+        )
+      ).rows[0].body;
+      assert.match(confirmation, /留言：练习深蹲/);
+      assert.ok(
+        !confirmation.includes("工作冲突"),
+        "old notifications must not adopt the latest change",
+      );
       assert.equal(
         (
           await as<{ available: boolean }>(
@@ -326,6 +377,14 @@ test("database authorization, registration, booking and delivery rules", async (
       await as(C, "select manage_booking('cancel',null,$1,null,'教练请假')", [
         id,
       ]);
+      const cancelled = (
+        await db.query<{ body: string }>(
+          "select body from email_jobs where appointment_id=$1 and subject='预约已取消' limit 1",
+          [id],
+        )
+      ).rows[0].body;
+      assert.match(cancelled, /已取消时间：\d{4}-\d{2}-\d{2}/);
+      assert.match(cancelled, /原因：教练请假/);
       await assert.rejects(
         as(B, "select manage_booking('cancel',null,$1)", [id]),
         /已取消/,

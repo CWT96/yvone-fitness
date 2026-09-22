@@ -9,6 +9,7 @@
 2. 名称 `yvone-fitness`，设置并保存数据库密码，选择美国西部附近的地区。
 3. 从 Connect 或 Settings → API 获取 Project URL 和 Publishable key（旧版 anon key 也可）。这两个配置可以放到网页。不要混用 Secret / service_role key。
 4. SQL Editor → New query，复制 `supabase/migrations/202609200001_initial.sql` 全文，执行一次。不要重复执行整个初始化文件。
+   然后执行 `supabase/migrations/202609220001_booking_email_details.sql`，为通知增加完整日期、原时间、新时间、时区及原因。已上线项目只需运行这个新增文件，既有预约保持不变。
 5. 再执行 `supabase/setup/01-coach-invite.sql`。保存返回的教练邀请码，七天有效且仅能使用一次，只能注册指定邮箱。
 6. Authentication → Providers / Sign In：开启 Email 注册、保留 Confirm email；关闭 Anonymous sign-ins，不启用未用到的 OAuth。邀请码约束由数据库触发器执行，不是前端控制。
 7. 暂不要在 Auth 后台直接新增用户：本项目的注册触发器会拒绝没有邀请码的创建请求。

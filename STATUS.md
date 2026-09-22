@@ -6,7 +6,7 @@
 - Vercel 项目：https://vercel.com/vinclo/yvone-fitness
 - 部署状态：READY；独立项目 `yvone-fitness`，未修改原 `vinclo` 项目的代码、域名或配置。
 - 源码已上传 https://github.com/CWT96/yvone-fitness ，并本地 Git 提交；`../Yvone-Fitness-source.zip` 是不含密钥和依赖文件的源码备份。
-- 35 项本地数据库/辅助规则测试通过，Next.js 正式构建通过；云端正式构建通过；已在浏览器打开公网网址确认页面。
+- 38 项本地数据库/辅助规则测试通过，类型检查通过；最新云端正式构建通过，已在浏览器验证改期时段列表、必须手动选择及正确保存。
 - 已通过演示操作验证教练代预约、留言保存、预约计数更新、学员端专属计划展示。
 
 ## 尚未完成的外部连接
@@ -21,9 +21,12 @@
 - 用户已更新 Squarespace 网站 DNS。Production 的 SITE_URL 已改为 https://yvonnefitness.com，并重新部署成功：dpl_CbV3xE5fE3MQu9jrFJmCR9LpCfan（READY）。当前公网主域名返回 308 跳转至 https://www.yvonnefitness.com/，www 返回 HTTP 200，证书验证成功。
 - 用户已确认 Resend 使用 contact.yvonnefitness.com 子域名。权威 DNS 已查到 resend._domainkey.contact.yvonnefitness.com 的 DKIM 公钥，以及 send.contact.yvonnefitness.com 指向 send.forge.rmta.net 的记录。发件地址应使用 appointments@contact.yvonnefitness.com；用户此前报告 Verified，实际发信测试仍待完成。
 - 用户已确认完成 Yvone Fitness 专用 Resend API Key 及 Supabase Auth SMTP 设置，并报告教练注册验证成功。Vercel Production 已保存全部七项环境变量（只核对名称，未读取用户密钥），包括 RESEND_API_KEY、SUPABASE_SERVICE_ROLE_KEY、RESEND_FROM 和 CRON_SECRET。最新部署 dpl_AMFNhJvHo2pV1iQKTpimdWfQmUyt 为 READY。使用专用任务密钥测试通知接口返回 200，sent/skipped/failed 均为 0，确认数据库队列调用成功；实际预约邮件收取仍待测试。vinclo 原有 Key 和项目配置保持不变。
-- Cron 私密设置已在本机准备：.env.cron-secret 与 .env.email-cron.sql（权限 0600、Git 忽略，禁止打印到聊天或提交）。后者使用 https://www.yvonnefitness.com 以避免定时请求经过域名跳转。已向用户打开文件并要求复制到 Supabase SQL Editor 执行一次，待确认。新增 .vercelignore 排除 .env* 等本机文件，已部署。
+- Cron 私密设置已在本机准备：.env.cron-secret 与 .env.email-cron.sql（权限 0600、Git 忽略，禁止打印到聊天或提交）。后者使用 https://www.yvonnefitness.com 以避免定时请求经过域名跳转。用户已确认在 Supabase SQL Editor 执行成功；实际自动发送及定时运行结果待真实预约验证。新增 .vercelignore 排除 .env* 等本机文件，已部署。
 - 用户报告主域名仍显示 Squarespace；2026-09-22 03:08 UTC 实测权威 DNS、Cloudflare 和 Google DNS 均为 Vercel 两条 A，无 AAAA。HTTP 跳转 HTTPS；HTTPS 返回 308 至 www，最终 200。当前未发现服务器配置问题，推测用户侧旧缓存；已建议无痕窗口及手机移动网络对照。
 - 用户随后确认主域名访问问题已解决。
+- 用户已按测试步骤完成真实学员注册和预约，并确认预约成功、教练及学员收到自动通知。随后确认改期邮件双方收到、取消和邮件开关正常。用户报告改期界面没有明确时间选项、邮件没有具体时间，两处已修复待用户复测。
+- 改期修复已部署至 dpl_EJD6dGtNGzpVfy9fLtyZJrMGHVTT（READY）：每次打开重新读取可预约时段、直接显示单选列表、不默认选择改期时间、无可用时段明确提示并禁止提交。邮件保留换行。
+- 用户已确认执行 supabase/migrations/202609220001_booking_email_details.sql；后续预约/改期/取消/提醒邮件保存不可变的时间详情、时区、地点、留言或原因。已通过重复迁移、夏令时、历史通知不受后续改期影响等测试。旧邮件不补发，远端新改期邮件尚待用户复测。
 - GitHub 源码已上传；用户明确确认暂时 Public，之后自行改为 Private（待办）。
 - Vercel 自动 Git 连接未获当前集成访问权限，需在新项目 Settings → Git 授权这个仓库；现有网站通过 CLI 已部署，不受影响。
 - GitHub workflow 权限缺失，自动检查尚未启用；模板保存在 scripts/github-actions-ci.yml。
@@ -33,4 +36,4 @@
 
 ## 下一步
 
-用户报告教练注册验证成功，域名访问问题已解决。所有邮件环境变量已保存并部署，通知接口已通过空队列检查。下一步等用户确认在 Supabase 执行本机私密 .env.email-cron.sql（只运行一次），然后完成真实学员预约、改期、取消、开关与邮件联调，再补充 GitHub 自动部署授权。SMTP 参数为 smtp.resend.com、465、用户名 resend、发件人 Yvone Fitness <appointments@contact.yvonnefitness.com>。服务端密钥直接填入平台，不在聊天里发送。
+预约自动通知、取消及邮件开关已获用户确认。改期界面/邮件时间修复已部署且用户已执行新增迁移，下一步刷新正式站、确保还有一个未来空闲时段，改期一次，验证手动选择及新邮件原/新时间。然后继续训练计划/档案隔离、推荐和其他 ACCEPTANCE.md 项目，补充 GitHub 自动部署授权。内置浏览器正式站未登录；不掌握用户密码。SMTP 发件人为 Yvone Fitness <appointments@contact.yvonnefitness.com>。服务端密钥直接填入平台，不在聊天里发送。

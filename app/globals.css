@@ -1309,6 +1309,58 @@ td small {
   align-items: center;
   gap: 9px;
 }
+.slot-choices {
+  border: 0;
+  padding: 0;
+  margin: 22px 0;
+  min-width: 0;
+}
+.slot-choices legend {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.slot-choice-list {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 3px;
+}
+.slot-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce5df;
+  border-radius: 10px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.slot-choice:has(input:checked) {
+  border-color: #183c30;
+  background: #edf4ed;
+}
+.slot-choice:focus-within {
+  outline: 2px solid #183c30;
+  outline-offset: 2px;
+}
+.slot-choice input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  accent-color: #183c30;
+}
+.slot-choices small {
+  display: block;
+  margin-top: 10px;
+  color: #52665c;
+}
+.empty-slots {
+  padding: 16px;
+  border-radius: 10px;
+  background: #f4f6f1;
+  line-height: 1.7;
+}
 .modal-footer {
   display: flex;
   justify-content: flex-end;
