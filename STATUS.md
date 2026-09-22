@@ -6,7 +6,8 @@
 - 两种学员专属价格：单次训练、不限次数包月。RLS 阻止读取他人价格，旧公共价格只对教练可见。Stripe 仍未连接。
 - 已加入 Resend 联系人同步队列、自动重试及教练查看状态；只处理专属分组，不改已有全局退订状态或其他业务分组。
 - 用户已确认执行 `202609220002_content_pricing_contacts.sql` 成功，已在 Vercel 保存专用 Full access `RESEND_CONTACTS_API_KEY`。已添加 `RESEND_SEGMENT_ID=1b66d482-f5bb-4c9f-bc3c-efbfe72acafc`，复用原 Cron。
-- 本地 51 项测试、类型检查、正式构建通过。浏览器演示验证保存草稿、删除、恢复草稿、金额保存及学员仅显示本人两种价格。生产发布及真实联系人同步结果待发布后记录。
+- 本地 51 项测试、类型检查、正式构建通过。浏览器演示验证保存草稿、删除、恢复草稿、金额保存及学员仅显示本人两种价格。
+- 本次功能提交 `c9e30a6456612b49460c34746f9438bbe64ea5b9` 已自动部署为 `dpl_8NFnss6rr5cKhR6NgSjTxF1r5cSJ`，READY、source=git；正式域名 HTML 返回 200 并匹配此部署。匿名联系人接口返回 401。授权通知任务返回 200，contacts.configured=true、本轮 synced=0/failed=0（无到期队列，不代表所有历史记录均已成功；分组人数等待用户后台核对）。
 
 ## 当前服务
 
