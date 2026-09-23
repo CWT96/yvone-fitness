@@ -35,7 +35,7 @@
 | 设置         | 值                                |
 | ------------ | --------------------------------- |
 | Sender email | `appointments@你已验证的发信域名` |
-| Sender name  | `Yvone Fitness`                   |
+| Sender name  | `Yvonne Fitness`                  |
 | Host         | `smtp.resend.com`                 |
 | Port         | `465`                             |
 | Username     | `resend`                          |
@@ -75,7 +75,7 @@ git push -u origin main
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key 或 anon key                                  | 公开                    |
 | `SUPABASE_SERVICE_ROLE_KEY`            | Supabase 服务端 service_role key / secret key                | 保密，勿加 NEXT_PUBLIC_ |
 | `RESEND_API_KEY`                       | Resend Send access key                                       | 保密                    |
-| `RESEND_FROM`                          | `Yvone Fitness <appointments@已验证域名>`                    | 发信身份                |
+| `RESEND_FROM`                          | `Yvonne Fitness <appointments@已验证域名>`                   | 发信身份                |
 | `SITE_URL`                             | Vercel 最终生产网址，形如 `https://yvone-fitness.vercel.app` | 公开                    |
 | `CRON_SECRET`                          | 至少 32 字节随机值，在本机生成并直接保存到平台               | 保密                    |
 

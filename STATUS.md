@@ -23,7 +23,7 @@
 - Supabase 项目 zhyxlzalrpwfsqpxfftt，URL https://zhyxlzalrpwfsqpxfftt.supabase.co 。初始迁移及 202609220001_booking_email_details.sql 均已由用户执行。
 - 注册开启邮箱验证，邀请码校验在数据库注册触发器执行；学员推荐码可直接用于注册。Supabase Auth Site URL 和主域名、www、备用域名的 callback/recovery 地址均由用户保存。
 - Vercel Production 七项变量已齐全：NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY、SUPABASE_SERVICE_ROLE_KEY、RESEND_API_KEY、RESEND_FROM、SITE_URL、CRON_SECRET。用户私密 Key 直接填入平台，未读取其内容。
-- Resend 使用 contact.yvonnefitness.com；发件人为 Yvone Fitness <appointments@contact.yvonnefitness.com>。使用独立 Key，未改 vinclo 原 Key。Supabase SMTP 已连接，教练/学员验证邮件成功。
+- Resend 使用 contact.yvonnefitness.com；用户于 2026-09-23 确认正确发件人名称为 Yvonne Fitness。已更新 Production `RESEND_FROM` 为 `Yvonne Fitness <appointments@contact.yvonnefitness.com>`，此文档提交触发重新部署以应用环境变量。使用独立 Key，未改 vinclo 原 Key。用户已自行修改 Supabase SMTP Sender name；预约通知的发件人由 Vercel 单独控制。既有已收邮件不会更新。
 - Supabase Cron 每分钟调用 https://www.yvonnefitness.com/api/notifications。用户确认 SQL 执行成功，后续真实预约自动邮件成功。
 - 本机私密 .env.cron-secret 和 .env.email-cron.sql 权限 0600，Git 和 Vercel 均排除；禁止打印到聊天或提交。不要重复执行 Cron 初始化脚本。
 - 网站 DNS 保留 Squarespace Nameservers：A @ → 216.150.1.1 和 216.150.16.1；www CNAME → 217075c645c4eec7.vercel-dns-016.com。
