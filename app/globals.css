@@ -1530,6 +1530,33 @@ td small {
 .backdrop {
   display: none;
 }
+.reload-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  background: #fff4df;
+  border: 1px solid #d6b875;
+  border-radius: 10px;
+}
+.reload-notice p {
+  flex: 1;
+  min-width: 180px;
+}
+.loading p {
+  max-width: 560px;
+  padding: 0 20px;
+}
+input,
+textarea,
+select {
+  scroll-margin-block: 24px;
+}
+.inline-error {
+  scroll-margin-block: 16px;
+}
 @media (min-width: 1500px) {
   main {
     padding: 42px 54px 0;
@@ -1770,12 +1797,14 @@ td small {
     font-size: 16px;
   }
   .sidebar {
+    visibility: hidden;
     transform: translateX(-100%);
     transition: transform 0.2s;
     width: 245px;
     padding: 28px 20px;
   }
   .sidebar.open {
+    visibility: visible;
     transform: translateX(0);
   }
   .sidebar .brand {

@@ -34,7 +34,13 @@ import {
 } from "lucide-react";
 import { configured, supabase } from "@/lib/supabase";
 import { demoData } from "@/lib/demo";
-import { availableBookingSlots } from "@/lib/booking";
+import { availableBookingSlots, compareBookings } from "@/lib/booking";
+import {
+  fieldLimits,
+  initialMember,
+  LatestRead,
+  saveThenRefresh,
+} from "@/lib/forms";
 import type {
   Data,
   Profile,
@@ -43,7 +49,7 @@ import type {
   Plan,
   RecordEntry,
 } from "@/lib/types";
-import { displayTime, localToISO, csvCell } from "@/lib/time";
+import { displayTime, localToISO, csvCell, scheduleDays } from "@/lib/time";
 import type { Session } from "@supabase/supabase-js";
 
 type Field = {
@@ -56,6 +62,8 @@ type Field = {
   hint?: string;
   min?: number;
   max?: number;
+  step?: number;
+  minLength?: number;
 };
 type Dialog = {
   title: string;
@@ -63,6 +71,8 @@ type Dialog = {
   fields: Field[];
   submit?: string;
   publication?: boolean;
+  readOnly?: boolean;
+  success?: string;
   action: (values: Record<string, string>) => Promise<void>;
 };
 const tabs = [
@@ -125,9 +135,11 @@ const emptyData = (): Data => ({
   member_prices: [],
   contact_sync: [],
 });
-function Badge({ value }: { value: string }) {
+function Badge({ value, label }: { value: string; label?: string }) {
   return (
-    <span className={`badge ${value}`}>{statusNames[value] || value}</span>
+    <span className={`badge ${value}`}>
+      {label || statusNames[value] || value}
+    </span>
   );
 }
 function Empty({
@@ -165,10 +177,17 @@ function DialogView({
   useEffect(() => {
     ref.current?.showModal();
   }, []);
+  useEffect(() => {
+    if (error)
+      ref.current
+        ?.querySelector(".inline-error")
+        ?.scrollIntoView({ block: "nearest" });
+  }, [error]);
   return (
     <dialog
       ref={ref}
       className="modal"
+      aria-labelledby="dialog-title"
       onCancel={(e) => {
         e.preventDefault();
         if (!busy) onClose();
@@ -177,7 +196,7 @@ function DialogView({
       <div className="modal-head">
         <div>
           <span className="eyebrow">YVONE FITNESS</span>
-          <h2>{dialog.title}</h2>
+          <h2 id="dialog-title">{dialog.title}</h2>
         </div>
         <button
           className="icon-btn"
@@ -188,7 +207,9 @@ function DialogView({
           <X />
         </button>
       </div>
-      {dialog.description && <p className="muted">{dialog.description}</p>}
+      {dialog.description && (
+        <p className="muted pre-wrap">{dialog.description}</p>
+      )}
       {error && (
         <p className="inline-error" role="alert">
           {error}
@@ -252,7 +273,7 @@ function DialogView({
                       defaultValue={String(f.value ?? "")}
                       required={f.required}
                       rows={7}
-                      maxLength={30000}
+                      maxLength={fieldLimits[f.name] || 30000}
                     />
                   ) : f.type === "select" ? (
                     <select
@@ -277,8 +298,9 @@ function DialogView({
                       required={f.required}
                       min={f.min}
                       max={f.max}
-                      step={f.type === "number" ? "any" : undefined}
-                      maxLength={f.name === "p_name" ? 80 : 2000}
+                      step={f.type === "number" ? f.step || "any" : undefined}
+                      minLength={f.minLength}
+                      maxLength={fieldLimits[f.name] || 2000}
                     />
                   )}
                 </>
@@ -288,14 +310,16 @@ function DialogView({
           ),
         )}
         <div className="modal-footer">
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={busy}
-            onClick={onClose}
-          >
-            返回
-          </button>
+          {!dialog.readOnly && (
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={busy}
+              onClick={onClose}
+            >
+              返回
+            </button>
+          )}
           {dialog.publication && (
             <button
               type="submit"
@@ -314,7 +338,9 @@ function DialogView({
             disabled={
               busy ||
               dialog.fields.some(
-                (f) => f.type === "slots" && !f.options?.length,
+                (f) =>
+                  (f.type === "slots" || (f.type === "select" && f.required)) &&
+                  !f.options?.length,
               )
             }
           >
@@ -349,6 +375,13 @@ export default function Studio() {
   >("login");
   const [showAuth, setShowAuth] = useState(false);
   const [authHint, setAuthHint] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const latestRead = useRef(new LatestRead());
+  const sessionOwner = useRef<string | null>(null);
+  const sessionId = session?.user.id;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const current = data.profiles.find(
     (p) =>
       p.id ===
@@ -358,11 +391,13 @@ export default function Studio() {
   const zone = data.settings.timezone;
   const members = data.profiles.filter((p) => p.role === "member");
   const notify = useCallback((message: string) => {
+    clearTimeout(toastTimer.current);
     setToast(message);
-    setTimeout(() => setToast(""), 4500);
+    toastTimer.current = setTimeout(() => setToast(""), 4500);
   }, []);
   const load = useCallback(async () => {
     if (!supabase) return;
+    const isLatest = latestRead.current.begin();
     const read = async (table: string, columns = "*") => {
       const rows: unknown[] = [];
       let from = 0;
@@ -408,6 +443,8 @@ export default function Studio() {
       read("settings"),
     ]);
     if (slots.error) throw slots.error;
+    if (!isLatest()) return;
+    setLoadError("");
     setData({
       profiles,
       slots: slots.data || [],
@@ -429,6 +466,19 @@ export default function Studio() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, s) => {
+      if (sessionOwner.current !== (s?.user.id || null)) {
+        latestRead.current.invalidate();
+        sessionOwner.current = s?.user.id || null;
+        setData(emptyData());
+        setDialog(null);
+        setTab("overview");
+        setFilter("all");
+        setQuery("");
+        setMemberFilter("all");
+        setError("");
+        setLoadError("");
+        setLoading(!!s);
+      }
       setSession(s);
       if (event === "PASSWORD_RECOVERY") {
         setAuthMode("password");
@@ -436,21 +486,38 @@ export default function Studio() {
       }
       if (!s) setLoading(false);
     });
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) setError(error.message);
-      setSession(session);
-      if (!session) setLoading(false);
-    });
+    // onAuthStateChange delivers INITIAL_SESSION; avoid a competing stale getSession.
     return () => subscription.unsubscribe();
   }, []);
   useEffect(() => {
-    if (session && !demo) {
+    if (sessionId && !demo) {
+      let active = true;
       setLoading(true);
       load()
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false));
+        .catch(() => {
+          if (active) setLoadError("暂时无法读取数据，请检查网络后重试。");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {
+        active = false;
+        latestRead.current.invalidate();
+      };
     }
-  }, [session, demo, load]);
+  }, [sessionId, demo, load]);
+  useEffect(() => {
+    setError("");
+  }, [dialog]);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [menu]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("ref") || params.has("invite")) {
@@ -463,17 +530,37 @@ export default function Studio() {
     }
   }, []);
   useEffect(() => {
-    if (!session || demo) return;
+    if (!sessionId || demo) return;
+    let active = true;
     const refresh = () => {
-      if (document.visibilityState === "visible") load().catch(() => {});
+      if (document.visibilityState === "visible")
+        load().catch(() => {
+          if (active) setLoadError("自动刷新未成功，当前显示上次读取的数据。");
+        });
     };
     window.addEventListener("focus", refresh);
     const timer = setInterval(refresh, 60000);
     return () => {
+      active = false;
       window.removeEventListener("focus", refresh);
       clearInterval(timer);
     };
-  }, [session, demo, load]);
+  }, [sessionId, demo, load]);
+  async function retryLoad() {
+    setBusy(true);
+    try {
+      await load();
+    } catch {
+      setLoadError("暂时无法读取数据，请检查网络后重试。");
+    } finally {
+      setBusy(false);
+    }
+  }
+  function changeAuthMode(mode: typeof authMode) {
+    setAuthMode(mode);
+    setError("");
+    setAuthHint("");
+  }
   const formatPrice = (value: number | null | undefined, currency = "USD") =>
     value == null
       ? "待教练设置"
@@ -496,9 +583,16 @@ export default function Studio() {
     name: "p_member",
     label: "指定学员",
     type: "select",
-    value: id || memberOptions[0]?.value,
+    value: initialMember(
+      id,
+      memberFilter,
+      memberOptions.map((m) => m.value),
+    ),
     required: true,
     options: memberOptions,
+    hint: memberOptions.length
+      ? "请确认内容归属的学员。"
+      : "暂无可用学员，请先邀请学员注册或恢复学员账号。",
   });
   async function mutate(fn: string, args: Record<string, unknown>) {
     if (demo) {
@@ -506,9 +600,14 @@ export default function Studio() {
       return;
     }
     if (!supabase) throw new Error("请先连接 Supabase");
-    const { error } = await supabase.rpc(fn, args);
-    if (error) throw error;
-    await load();
+    const refreshed = await saveThenRefresh(async () => {
+      const { error } = await supabase!.rpc(fn, args);
+      if (error) throw error;
+    }, load);
+    if (!refreshed)
+      setLoadError(
+        "操作已保存，但页面刷新失败。请点击重新加载，不要重复提交。",
+      );
   }
   function demoMutate(fn: string, a: Record<string, unknown>) {
     const id = crypto.randomUUID(),
@@ -680,9 +779,26 @@ export default function Studio() {
     setBusy(true);
     setError("");
     try {
+      if (dialog.readOnly) {
+        setDialog(null);
+        return;
+      }
+      for (const f of dialog.fields) {
+        if (f.required && f.type !== "checkbox" && !values[f.name]?.trim())
+          throw new Error(`请填写${f.label}`);
+      }
       await dialog.action(values);
       setDialog(null);
-      notify(demo ? "已更新演示数据（刷新后恢复）" : "保存成功");
+      notify(
+        demo
+          ? "已更新演示数据（刷新后恢复）"
+          : dialog.success ||
+              (dialog.publication
+                ? values.intent === "publish"
+                  ? "已发布给指定学员"
+                  : "已保存草稿，仅教练可见"
+                : "保存成功"),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -843,7 +959,7 @@ export default function Studio() {
       publication: true,
       submit: record?.shared ? "更新并发布" : "发布给学员",
       description: record
-        ? `归属学员：${name(record.member_id)}。保存草稿仅教练可见，发布后只有这位学员可见。`
+        ? `归属学员：${name(record.member_id)}。保存草稿仅教练可见，发布后只有这位学员可见。已发布内容保存为草稿后将对学员隐藏。`
         : "保存草稿仅教练可见；发布后只有指定学员可见。",
       fields: [
         ...(!record ? [memberField(member)] : []),
@@ -926,6 +1042,7 @@ export default function Studio() {
           value: price?.single_price ?? "",
           min: 0,
           max: 999999.99,
+          step: 0.01,
         },
         {
           name: "monthly",
@@ -934,6 +1051,7 @@ export default function Studio() {
           value: price?.monthly_price ?? "",
           min: 0,
           max: 999999.99,
+          step: 0.01,
         },
         {
           name: "currency",
@@ -969,6 +1087,7 @@ export default function Studio() {
           value: 1,
           min: 1,
           max: 10000,
+          step: 1,
           required: true,
         },
         {
@@ -978,6 +1097,7 @@ export default function Studio() {
           value: 30,
           min: 1,
           max: 365,
+          step: 1,
           required: true,
         },
       ],
@@ -1001,13 +1121,20 @@ export default function Studio() {
   function exportReferrals() {
     const rows = [
       ["推荐人", "新学员", "状态", "注册时间", "成功时间"],
-      ...data.referrals.map((r) => [
-        name(r.referrer_id),
-        coach ? name(r.referred_id) : "新学员",
-        statusNames[r.status],
-        r.created_at,
-        r.confirmed_at || "",
-      ]),
+      ...data.referrals
+        .filter(
+          (r) =>
+            (coach || r.referrer_id === current?.id) &&
+            (memberFilter === "all" || r.referrer_id === memberFilter) &&
+            (filter === "all" || r.status === filter),
+        )
+        .map((r) => [
+          name(r.referrer_id),
+          coach ? name(r.referred_id) : "新学员",
+          statusNames[r.status],
+          r.created_at,
+          r.confirmed_at || "",
+        ]),
     ];
     const url = URL.createObjectURL(
       new Blob(
@@ -1050,24 +1177,30 @@ export default function Studio() {
     setError("");
     setAuthHint("");
     try {
-      const email = String(f.email || ""),
+      const email = String(f.email || "").trim(),
         password = String(f.password || "");
+      if (
+        (authMode === "register" || authMode === "password") &&
+        password !== String(f.confirm_password || "")
+      )
+        throw new Error("两次输入的密码不一致");
       if (authMode === "register") {
+        if (!String(f.full_name || "").trim()) throw new Error("请填写姓名");
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
             data: {
-              full_name: f.full_name,
-              invite_code: f.invite_code,
-              referral_code: f.referral_code || "",
+              full_name: String(f.full_name || "").trim(),
+              invite_code: String(f.invite_code || "").trim(),
+              referral_code: String(f.referral_code || "").trim(),
             },
           },
         });
         if (error) throw error;
         setAuthHint(
-          "请查收验证邮件，点击链接完成注册。如果没有收到，请检查垃圾邮件或联系教练确认邀请码。",
+          "请查收验证邮件，并在发起注册的同一个浏览器中打开链接。如果没有收到，请检查垃圾邮件或联系教练确认邀请码。",
         );
       }
       if (authMode === "login") {
@@ -1083,7 +1216,9 @@ export default function Studio() {
           redirectTo: `${window.location.origin}/auth/callback?next=recovery`,
         });
         if (error) throw error;
-        setAuthHint("如果该邮箱已注册，你会收到密码重置邮件。");
+        setAuthHint(
+          "如果该邮箱已注册，你会收到密码重置邮件。请在当前浏览器中打开邮件链接。",
+        );
       }
       if (authMode === "password") {
         const { error } = await supabase.auth.updateUser({ password });
@@ -1114,7 +1249,7 @@ export default function Studio() {
           {toast}
         </div>
       )}
-      {error && (
+      {error && !dialog && !showAuth && (demo || session) && (
         <div className="error-toast" role="alert">
           <span>{error}</span>
           <button onClick={() => setError("")} aria-label="关闭提示">
@@ -1185,7 +1320,12 @@ export default function Studio() {
                 ? "仅接受邀请注册。请输入教练邀请码或学员推荐码。"
                 : "你的训练安排，都在这里。"}
             </p>
-            <form onSubmit={authSubmit}>
+            {error && (
+              <p className="inline-error" role="alert">
+                {error}
+              </p>
+            )}
+            <form key={authMode} onSubmit={authSubmit}>
               {authMode === "register" && (
                 <label className="field">
                   姓名
@@ -1220,6 +1360,18 @@ export default function Studio() {
                       authMode === "login" ? "current-password" : "new-password"
                     }
                     placeholder="至少 8 位字符"
+                  />
+                </label>
+              )}
+              {(authMode === "register" || authMode === "password") && (
+                <label className="field">
+                  确认密码
+                  <input
+                    name="confirm_password"
+                    type="password"
+                    minLength={8}
+                    required
+                    autoComplete="new-password"
                   />
                 </label>
               )}
@@ -1262,18 +1414,24 @@ export default function Studio() {
             {authHint && <p className="success-box">{authHint}</p>}
             <div className="auth-links">
               <button
+                disabled={busy}
                 onClick={() => {
-                  setAuthMode(authMode === "register" ? "login" : "register");
-                  setAuthHint("");
+                  changeAuthMode(
+                    authMode === "register" ? "login" : "register",
+                  );
                 }}
               >
                 {authMode === "register" ? "已有账号？登录" : "有邀请码？注册"}
               </button>
               {authMode === "login" && (
-                <button onClick={() => setAuthMode("reset")}>忘记密码</button>
+                <button disabled={busy} onClick={() => changeAuthMode("reset")}>
+                  忘记密码
+                </button>
               )}
               {authMode === "reset" && (
-                <button onClick={() => setAuthMode("login")}>返回登录</button>
+                <button disabled={busy} onClick={() => changeAuthMode("login")}>
+                  返回登录
+                </button>
               )}
             </div>
             {!configured && (
@@ -1305,8 +1463,18 @@ export default function Studio() {
       <div className="loading">
         <ShieldCheck size={36} />
         <h2>{current ? "账号已停用" : "无法读取个人资料"}</h2>
-        <p>请联系教练，或检查数据库是否完成初始化。</p>
-        <button className="btn" onClick={signOut}>
+        <p>
+          {current
+            ? "请联系教练恢复账号。"
+            : loadError ||
+              "个人资料暂时不可用，请重新加载；仍有问题时联系教练。"}
+        </p>
+        {!current && (
+          <button className="btn" disabled={busy} onClick={retryLoad}>
+            重新加载
+          </button>
+        )}
+        <button className="btn secondary" disabled={busy} onClick={signOut}>
           退出登录
         </button>
         {flash}
@@ -1406,6 +1574,7 @@ export default function Studio() {
                 onClick={() => {
                   setDialog({
                     title: "预约变更记录",
+                    readOnly: true,
                     description:
                       data.events
                         .filter((e) => e.appointment_id === b.id)
@@ -1414,7 +1583,7 @@ export default function Studio() {
                         )
                         .map(
                           (e) =>
-                            `${displayTime(e.created_at, zone)} · ${actionNames[e.action]} · ${name(e.actor_id)}${e.details.old_start ? " · 原时间 " + displayTime(e.details.old_start, zone) : ""}${e.details.new_start ? " → " + displayTime(e.details.new_start, zone) : ""}${e.message ? "\n" + e.message : ""}`,
+                            `${displayTime(e.created_at, zone)} · ${actionNames[e.action]} · ${e.actor_id === current.id ? "我" : data.profiles.some((p) => p.id === e.actor_id) ? name(e.actor_id) : "教练"}${e.details.old_start ? " · 原时间 " + displayTime(e.details.old_start, zone) : ""}${e.details.new_start ? " → " + displayTime(e.details.new_start, zone) : ""}${e.message ? "\n" + e.message : ""}`,
                         )
                         .join("\n\n") || "暂无变更记录",
                     fields: [],
@@ -1516,7 +1685,8 @@ export default function Studio() {
           <div className="row gap">
             <button
               className="icon-btn mobile-menu"
-              aria-label="打开菜单"
+              aria-label={menu ? "关闭菜单" : "打开菜单"}
+              aria-expanded={menu}
               onClick={() => setMenu(!menu)}
             >
               <Menu />
@@ -1565,6 +1735,18 @@ export default function Studio() {
           </div>
         )}
         <main>
+          {loadError && (
+            <div className="reload-notice" role="status">
+              <p>{loadError}</p>
+              <button
+                className="btn secondary small"
+                disabled={busy}
+                onClick={retryLoad}
+              >
+                重新加载
+              </button>
+            </div>
+          )}
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -1830,13 +2012,7 @@ export default function Studio() {
           )}
           {tab === "schedule" &&
             (() => {
-              const now = new Date();
-              now.setDate(now.getDate() + week * 7);
-              const days = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(now);
-                d.setDate(d.getDate() + i);
-                return displayTime(d.toISOString(), zone, "yyyy-MM-dd");
-              });
+              const days = scheduleDays(zone, week);
               return (
                 <section className="panel calendar-panel">
                   <div className="section-head">
@@ -1860,7 +2036,7 @@ export default function Studio() {
                         className="btn secondary small"
                         onClick={() => setWeek(0)}
                       >
-                        本周
+                        回到今天
                       </button>
                       <button
                         className="icon-btn bordered"
@@ -1986,9 +2162,7 @@ export default function Studio() {
                       (filter === "all" || b.status === filter) &&
                       name(b.member_id).includes(query),
                   )
-                  .sort((a, b) =>
-                    b.slots.starts_at.localeCompare(a.slots.starts_at),
-                  ),
+                  .sort((a, b) => compareBookings(a, b)),
               )}
             </section>
           )}
@@ -2237,9 +2411,11 @@ export default function Studio() {
                 <div className="panel">
                   <Empty
                     text={
-                      coach
-                        ? "还没有训练计划，为学员制定第一份计划吧"
-                        : "教练发布计划后，你会在这里看到"
+                      filter !== "all" || memberFilter !== "all"
+                        ? "当前筛选下没有训练计划"
+                        : coach
+                          ? "还没有训练计划，为学员制定第一份计划吧"
+                          : "教练发布计划后，你会在这里看到"
                     }
                   />
                 </div>
@@ -2361,7 +2537,13 @@ export default function Studio() {
                   recordMatchesFilter(r),
               ) && (
                 <div className="panel">
-                  <Empty text="还没有训练记录" />
+                  <Empty
+                    text={
+                      filter !== "all" || memberFilter !== "all"
+                        ? "当前筛选下没有训练记录"
+                        : "还没有训练记录"
+                    }
+                  />
                 </div>
               )}
             </>
@@ -2868,6 +3050,8 @@ export default function Studio() {
                           },
                         ],
                         submit: "发送验证邮件",
+                        success:
+                          "请检查新旧邮箱中的验证邮件，并在当前浏览器完成验证。",
                         action: async (v) => {
                           if (demo)
                             throw new Error("演示模式不发送真实验证邮件");
@@ -2878,7 +3062,6 @@ export default function Studio() {
                             },
                           );
                           if (error) throw error;
-                          notify("请检查新旧邮箱中的验证邮件");
                         },
                       })
                     }
@@ -2895,12 +3078,22 @@ export default function Studio() {
                             name: "password",
                             label: "新密码（至少 8 位）",
                             type: "password",
+                            minLength: 8,
+                            required: true,
+                          },
+                          {
+                            name: "confirm_password",
+                            label: "确认新密码",
+                            type: "password",
+                            minLength: 8,
                             required: true,
                           },
                         ],
                         action: async (v) => {
                           if (v.password.length < 8)
                             throw new Error("密码至少需要 8 位");
+                          if (v.password !== v.confirm_password)
+                            throw new Error("两次输入的密码不一致");
                           if (demo) throw new Error("演示模式不修改真实密码");
                           const { error } = await supabase!.auth.updateUser({
                             password: v.password,
@@ -2996,7 +3189,7 @@ export default function Studio() {
                     <div>
                       <h2>Resend 联系人同步</h2>
                       <p className="muted">
-                        已验证邮箱的学员自动同步到专属分组；关闭通知或停用账号会移出该分组。不会更改其他业务的全局退订设置。
+                        系统每分钟自动检查，无需手动同步。邮箱验证后加入专属分组；关闭通知或停用账号会移出。不会更改其他业务的全局退订设置。
                       </p>
                     </div>
                     <button
@@ -3057,7 +3250,19 @@ export default function Studio() {
                           <tr key={c.id}>
                             <td>{name(c.member_id)}</td>
                             <td>
-                              <Badge value={c.state} />
+                              <Badge
+                                value={c.state}
+                                label={
+                                  (
+                                    {
+                                      pending: "等待自动同步",
+                                      processing: "同步中",
+                                      failed: "同步失败",
+                                      synced: "已同步",
+                                    } as Record<string, string>
+                                  )[c.state]
+                                }
+                              />
                             </td>
                             <td>
                               {c.in_segment ? "已加入" : "未加入 / 已移出"}

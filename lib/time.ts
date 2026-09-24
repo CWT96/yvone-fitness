@@ -21,3 +21,13 @@ export function csvCell(value: unknown) {
   if (/^[=+@\-\t\r\n]/.test(text)) text = "'" + text;
   return '"' + text.replaceAll('"', '""') + '"';
 }
+
+export function scheduleDays(zone: string, week: number, now = new Date()) {
+  // Add calendar days independently of the viewer's timezone and DST changes.
+  const today = formatInTimeZone(now, zone, "yyyy-MM-dd");
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(`${today}T12:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + week * 7 + i);
+    return day.toISOString().slice(0, 10);
+  });
+}
