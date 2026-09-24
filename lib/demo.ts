@@ -60,16 +60,28 @@ export function demoData(): Data {
     ],
     profiles: demoProfiles,
     slots,
-    appointments: [0, 3, 6].map((n, i) => ({
-      id: `booking-${i}`,
-      member_id: `member-${i}`,
-      slot_id: `slot-${n}`,
-      status: "booked",
-      message: i === 0 ? "这次想重点练习深蹲动作。" : "",
-      reason: "",
-      created_at: future(-2, 0),
-      slots: slots[n],
-    })),
+    appointments: [
+      ...[0, 3, 6].map((n, i) => ({
+        id: `booking-${i}`,
+        member_id: `member-${i}`,
+        slot_id: `slot-${n}`,
+        status: "booked" as const,
+        message: i === 0 ? "这次想重点练习深蹲动作。" : "",
+        reason: "",
+        created_at: future(-2, 0),
+        slots: slots[n],
+      })),
+      {
+        id: "booking-past",
+        member_id: "member-1",
+        slot_id: "slot-past",
+        status: "booked",
+        message: "课后请记录这次训练的表现。",
+        reason: "",
+        created_at: future(-3, 0),
+        slots: { starts_at: future(-1, 16), ends_at: future(-1, 17) },
+      },
+    ],
     plans: [
       {
         id: "plan-0",

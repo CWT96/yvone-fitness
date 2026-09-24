@@ -35,6 +35,7 @@ import {
 import { configured, supabase } from "@/lib/supabase";
 import { demoData } from "@/lib/demo";
 import { availableBookingSlots, compareBookings } from "@/lib/booking";
+import { bookingMatches, memberNeeds } from "@/lib/workflows";
 import {
   fieldLimits,
   initialMember,
@@ -570,9 +571,16 @@ export default function Studio() {
   const name = (id: string) =>
     data.profiles.find((p) => p.id === id)?.full_name || "学员";
   const navigate = (next: string) => {
+    window.scrollTo({ top: 0, behavior: "instant" });
     setTab(next);
     setQuery("");
-    setFilter("all");
+    setFilter(
+      next === "plans" && !coach
+        ? "published"
+        : next === "bookings"
+          ? "upcoming"
+          : "all",
+    );
     setMenu(false);
     setMemberFilter("all");
   };
@@ -805,7 +813,7 @@ export default function Studio() {
       setBusy(false);
     }
   };
-  async function book(slot?: Slot, existing?: Appointment) {
+  async function book(slot?: Slot, existing?: Appointment, member?: string) {
     if (busy) return;
     setError("");
     setBusy(true);
@@ -826,7 +834,7 @@ export default function Studio() {
             : "预约下一次训练",
         description: `${existing ? `当前预约：${displayTime(existing.slots.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(existing.slots.ends_at, zone, "HH:mm")}。请选择新的训练时间。` : "请选择训练时间。"} 所有课程时间均为 ${zone}。`,
         fields: [
-          ...(coach && !existing ? [memberField()] : []),
+          ...(coach && !existing ? [memberField(member)] : []),
           {
             name: "p_slot",
             label: "训练时间",
@@ -843,7 +851,11 @@ export default function Studio() {
           },
           {
             name: "p_message",
-            label: existing ? "改期原因（选填）" : "给教练的留言（选填）",
+            label: existing
+              ? "改期原因（选填）"
+              : coach
+                ? "预约备注（学员可见，选填）"
+                : "给教练的留言（选填）",
             type: "textarea",
           },
         ],
@@ -953,7 +965,7 @@ export default function Studio() {
         }),
     });
   }
-  function editRecord(record?: RecordEntry, member?: string) {
+  function editRecord(record?: RecordEntry, member?: string, date?: string) {
     setDialog({
       title: record ? "编辑训练档案" : "添加训练档案",
       publication: true,
@@ -969,6 +981,7 @@ export default function Studio() {
           type: "date",
           value:
             record?.recorded_on ||
+            date ||
             displayTime(new Date().toISOString(), zone, "yyyy-MM-dd"),
           required: true,
         },
@@ -1484,9 +1497,7 @@ export default function Studio() {
     (b) => coach || b.member_id === current.id,
   );
   const upcoming = ownAppointments
-    .filter(
-      (b) => b.status === "booked" && new Date(b.slots.starts_at) > new Date(),
-    )
+    .filter((b) => bookingMatches(b, "upcoming", zone))
     .sort((a, b) => a.slots.starts_at.localeCompare(b.slots.starts_at));
   const ownPlans = data.plans.filter(
     (p) =>
@@ -1505,19 +1516,64 @@ export default function Studio() {
     (r) => coach || r.referrer_id === current.id,
   );
   const next = upcoming[0];
-  const bookingCards = (items: Appointment[]) =>
+  const todayBookings = ownAppointments
+    .filter((b) => bookingMatches(b, "today", zone))
+    .sort((a, b) => compareBookings(a, b));
+  const pendingBookings = ownAppointments.filter((b) =>
+    bookingMatches(b, "pending", zone),
+  );
+  const needsPlan = members.filter(
+    (m) => m.active && memberNeeds(data, m.id).plan,
+  );
+  const needsPrice = members.filter(
+    (m) => m.active && memberNeeds(data, m.id).price,
+  );
+  const visibleMembers = members.filter(
+    (m) =>
+      (filter === "needs-plan"
+        ? needsPlan.some((p) => p.id === m.id)
+        : filter === "needs-price"
+          ? needsPrice.some((p) => p.id === m.id)
+          : true) &&
+      `${m.full_name} ${m.email}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+  );
+  const openBookings = (view: string) => {
+    navigate("bookings");
+    setFilter(view);
+  };
+  const openMembers = (view: string) => {
+    navigate("members");
+    setFilter(view);
+  };
+  const bookingCards = (
+    items: Appointment[],
+    emptyText = "还没有课程安排",
+    showBookingAction = true,
+  ) =>
     items.length ? (
       <div className="booking-list">
         {items.map((b) => (
           <article className="booking-row" key={b.id}>
             <div className="date-block">
               <strong>{displayTime(b.slots.starts_at, zone, "dd")}</strong>
-              <span>{displayTime(b.slots.starts_at, zone, "MM月 EEE")}</span>
+              <span>{displayTime(b.slots.starts_at, zone, "yyyy.MM EEE")}</span>
             </div>
             <div className="booking-main">
               <div className="row gap">
                 <h3>{coach ? name(b.member_id) : "一对一私教训练"}</h3>
-                <Badge value={b.status} />
+                <Badge
+                  value={
+                    b.status === "booked" &&
+                    Date.parse(b.slots.ends_at) <= Date.now()
+                      ? "待确认完成"
+                      : b.status === "booked" &&
+                          Date.parse(b.slots.starts_at) <= Date.now()
+                        ? "进行中"
+                        : b.status
+                  }
+                />
               </div>
               <p>
                 <Clock3 size={14} />
@@ -1530,6 +1586,23 @@ export default function Studio() {
               {b.reason && <small>最近变更原因：{b.reason}</small>}
             </div>
             <div className="booking-actions">
+              {coach &&
+                members.some((m) => m.id === b.member_id && m.active) &&
+                b.status !== "cancelled" &&
+                Date.parse(b.slots.starts_at) <= Date.now() && (
+                  <button
+                    className="btn secondary small"
+                    onClick={() =>
+                      editRecord(
+                        undefined,
+                        b.member_id,
+                        displayTime(b.slots.starts_at, zone, "yyyy-MM-dd"),
+                      )
+                    }
+                  >
+                    写记录
+                  </button>
+                )}
               {b.status === "booked" &&
                 (coach || new Date(b.slots.starts_at) > new Date()) && (
                   <>
@@ -1600,15 +1673,17 @@ export default function Studio() {
       </div>
     ) : (
       <Empty
-        text="还没有课程安排"
+        text={emptyText}
         action={
-          <button
-            className="btn secondary"
-            onClick={() => navigate("schedule")}
-          >
-            查看可预约时间
-            <ArrowRight size={16} />
-          </button>
+          showBookingAction && (
+            <button
+              className="btn secondary"
+              onClick={() => navigate("schedule")}
+            >
+              查看可预约时间
+              <ArrowRight size={16} />
+            </button>
+          )
         }
       />
     );
@@ -1825,6 +1900,138 @@ export default function Studio() {
           </div>
           {tab === "overview" && (
             <>
+              {coach && (
+                <section className="work-queue" aria-label="待办事项">
+                  <button onClick={() => openBookings("pending")}>
+                    <strong>{pendingBookings.length}</strong>
+                    <span>
+                      课程待确认完成<small>课后确认，顺手写记录</small>
+                    </span>
+                    <ChevronRight size={18} />
+                  </button>
+                  <button onClick={() => openMembers("needs-plan")}>
+                    <strong>{needsPlan.length}</strong>
+                    <span>
+                      学员待制定计划<small>仅统计在训学员</small>
+                    </span>
+                    <ChevronRight size={18} />
+                  </button>
+                  <button onClick={() => openMembers("needs-price")}>
+                    <strong>{needsPrice.length}</strong>
+                    <span>
+                      学员待设置价格<small>金额仅对应学员可见</small>
+                    </span>
+                    <ChevronRight size={18} />
+                  </button>
+                </section>
+              )}
+              <div className="dashboard-grid">
+                <section className="panel schedule-panel">
+                  <div className="section-head">
+                    <div>
+                      <span className="eyebrow">UP NEXT</span>
+                      <h2>
+                        {coach
+                          ? todayBookings.length
+                            ? "今天的训练"
+                            : "接下来的训练"
+                          : next &&
+                              Date.parse(next.slots.starts_at) <= Date.now()
+                            ? "正在进行的训练"
+                            : "你的下一次训练"}
+                      </h2>
+                    </div>
+                    <button
+                      className="text-btn"
+                      onClick={() => openBookings("all")}
+                    >
+                      全部预约 <ArrowRight size={16} />
+                    </button>
+                  </div>
+                  {bookingCards(
+                    coach
+                      ? (todayBookings.length ? todayBookings : upcoming).slice(
+                          0,
+                          3,
+                        )
+                      : upcoming.slice(0, 1),
+                    coach
+                      ? "暂无接下来的训练，可为学员添加预约"
+                      : "你还没有预约，选择时间即可安排下一次训练",
+                  )}
+                  {coach && todayBookings.length > 3 && (
+                    <button
+                      className="text-btn agenda-more"
+                      onClick={() => openBookings("today")}
+                    >
+                      查看今天全部 {todayBookings.length} 节课程{" "}
+                      <ArrowRight size={16} />
+                    </button>
+                  )}
+                  {!coach && next && (
+                    <p className="session-guidance">
+                      {displayTime(
+                        next.slots.starts_at,
+                        zone,
+                        "yyyy年MM月dd日 EEEE",
+                      )}{" "}
+                      · {data.settings.location || "训练地点请与教练确认"}
+                      <br />
+                      {Date.parse(next.slots.starts_at) > Date.now()
+                        ? "需要调整时，可直接使用上方的改期或取消按钮。"
+                        : "课程已开始，如需调整请联系教练。"}
+                    </p>
+                  )}
+                  <div className="panel-bottom">
+                    <span>
+                      <Clock3 size={15} />
+                      所有时间均以
+                      {zone === "America/Los_Angeles" ? "美西时区" : zone}显示
+                    </span>
+                    <button
+                      className="text-btn"
+                      onClick={() => navigate("schedule")}
+                    >
+                      查看时间表
+                    </button>
+                  </div>
+                </section>
+                <section className="focus-card">
+                  <span className="eyebrow">
+                    {coach ? "QUICK ACTIONS" : "YOUR CURRENT PLAN"}
+                  </span>
+                  <div className="focus-icon">
+                    <Dumbbell size={42} />
+                  </div>
+                  <h2>
+                    {coach
+                      ? "常用操作"
+                      : ownPlans.find((p) => p.status === "published")?.title ||
+                        "训练计划准备中"}
+                  </h2>
+                  <p>
+                    {coach
+                      ? "开放时间、记录训练，都可以从这里开始。"
+                      : ownPlans.some((p) => p.status === "published")
+                        ? "这是教练当前为你安排的计划，点击查看完整训练内容。"
+                        : "教练发布后会显示在这里，你无需进行额外操作。"}
+                  </p>
+                  <button onClick={() => navigate("plans")}>
+                    {coach ? "管理训练计划" : "查看训练计划"}{" "}
+                    <ArrowRight size={18} />
+                  </button>
+                  {coach && (
+                    <div className="quick-actions">
+                      <button onClick={addSlot}>
+                        开放时间 <Plus size={17} />
+                      </button>
+                      <button onClick={() => editRecord()}>
+                        添加训练记录 <Plus size={17} />
+                      </button>
+                    </div>
+                  )}
+                </section>
+              </div>
               <div className="stats-grid">
                 {[
                   {
@@ -1838,16 +2045,17 @@ export default function Studio() {
                     note: coach ? "持续陪伴每一份改变" : "坚持，都有迹可循",
                   },
                   {
-                    label: "即将开始",
+                    label: "接下来的训练",
                     value: upcoming.length,
                     unit: "节",
                     icon: CalendarDays,
-                    note: "已确认的未来课程",
+                    note: "包含正在进行中的课程",
                   },
                   {
                     label: coach ? "已发布计划" : "当前训练计划",
-                    value: ownPlans.filter((p) => p.status === "published")
-                      .length,
+                    value: ownPlans.filter(
+                      (p) => !p.deleted_at && p.status === "published",
+                    ).length,
                     unit: "份",
                     icon: Dumbbell,
                     note: "专属安排，循序渐进",
@@ -1875,56 +2083,6 @@ export default function Studio() {
                   </div>
                 ))}
               </div>
-              <div className="dashboard-grid">
-                <section className="panel schedule-panel">
-                  <div className="section-head">
-                    <div>
-                      <span className="eyebrow">UP NEXT</span>
-                      <h2>接下来的训练</h2>
-                    </div>
-                    <button
-                      className="text-btn"
-                      onClick={() => navigate("bookings")}
-                    >
-                      全部预约 <ArrowRight size={16} />
-                    </button>
-                  </div>
-                  {bookingCards(upcoming.slice(0, 3))}
-                  <div className="panel-bottom">
-                    <span>
-                      <Clock3 size={15} />
-                      所有时间均以
-                      {zone === "America/Los_Angeles" ? "美西时区" : zone}显示
-                    </span>
-                    <button
-                      className="text-btn"
-                      onClick={() => navigate("schedule")}
-                    >
-                      查看时间表
-                    </button>
-                  </div>
-                </section>
-                <section className="focus-card">
-                  <span className="eyebrow">STAY CONSISTENT</span>
-                  <div className="focus-icon">
-                    <Dumbbell size={42} />
-                  </div>
-                  <h2>
-                    {coach
-                      ? "好的训练，\n从好的计划开始。"
-                      : "专属于你，\n每一步都有方向。"}
-                  </h2>
-                  <p>
-                    {coach
-                      ? "用清晰的计划和及时的反馈，\n陪伴学员走得更远。"
-                      : ownPlans.find((p) => p.status === "published")?.title ||
-                        "等待教练为你制定专属训练计划。"}
-                  </p>
-                  <button onClick={() => navigate("plans")}>
-                    查看训练计划 <ArrowRight size={18} />
-                  </button>
-                </section>
-              </div>
               <div className="dashboard-lower">
                 <section className="panel">
                   <div className="section-head">
@@ -1943,28 +2101,32 @@ export default function Studio() {
                   </div>
                   {coach ? (
                     <div className="mini-members">
-                      {members.slice(0, 4).map((m) => (
-                        <button
-                          key={m.id}
-                          onClick={() => {
-                            navigate("records");
-                            setMemberFilter(m.id);
-                          }}
-                        >
-                          <Avatar name={m.full_name} />
-                          <span>
-                            <strong>{m.full_name}</strong>
-                            <small>
-                              {data.plans.find(
-                                (p) =>
-                                  p.member_id === m.id &&
-                                  p.status === "published",
-                              )?.title || "尚未指定训练计划"}
-                            </small>
-                          </span>
-                          <ChevronRight size={17} />
-                        </button>
-                      ))}
+                      {members
+                        .filter((m) => m.active)
+                        .slice(0, 4)
+                        .map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              navigate("records");
+                              setMemberFilter(m.id);
+                            }}
+                          >
+                            <Avatar name={m.full_name} />
+                            <span>
+                              <strong>{m.full_name}</strong>
+                              <small>
+                                {data.plans.find(
+                                  (p) =>
+                                    p.member_id === m.id &&
+                                    !p.deleted_at &&
+                                    p.status === "published",
+                                )?.title || "尚未指定训练计划"}
+                              </small>
+                            </span>
+                            <ChevronRight size={17} />
+                          </button>
+                        ))}
                       {!members.length && (
                         <Empty text="生成邀请码，迎接第一位学员" />
                       )}
@@ -2013,6 +2175,9 @@ export default function Studio() {
           {tab === "schedule" &&
             (() => {
               const days = scheduleDays(zone, week);
+              const available = availableBookingSlots(data.slots).filter((s) =>
+                days.includes(displayTime(s.starts_at, zone, "yyyy-MM-dd")),
+              );
               return (
                 <section className="panel calendar-panel">
                   <div className="section-head">
@@ -2047,72 +2212,136 @@ export default function Studio() {
                       </button>
                     </div>
                   </div>
-                  <div className="calendar-grid">
-                    {days.map((day) => (
-                      <div className="calendar-day" key={day}>
-                        <div className="day-heading">
-                          <span>
-                            {displayTime(
-                              localToISO(day + "T12:00", zone),
-                              zone,
-                              "EEE",
-                            )}
-                          </span>
-                          <strong>{day.slice(8)}</strong>
-                        </div>
-                        {data.slots
-                          .filter(
-                            (s) =>
-                              displayTime(s.starts_at, zone, "yyyy-MM-dd") ===
-                              day,
-                          )
-                          .map((s) => (
-                            <div
-                              className={`slot ${s.available ? "available" : "taken"}`}
-                              key={s.id}
-                            >
-                              <span>
-                                {displayTime(s.starts_at, zone, "HH:mm")} –{" "}
-                                {displayTime(s.ends_at, zone, "HH:mm")}
-                              </span>
-                              <strong>
-                                {s.available ? "可预约" : "已预约"}
-                              </strong>
-                              {s.available && (
-                                <button onClick={() => book(s)}>
-                                  {coach ? "代预约" : "预约"} <Plus size={13} />
-                                </button>
-                              )}
-                              {coach && s.available && (
-                                <button
-                                  className="slot-remove"
-                                  onClick={() =>
-                                    setDialog({
-                                      title: "关闭此时段",
-                                      description: displayTime(
-                                        s.starts_at,
-                                        zone,
-                                      ),
-                                      fields: [],
-                                      submit: "关闭时段",
-                                      action: () =>
-                                        mutate("save_slot", { p_id: s.id }),
-                                    })
-                                  }
-                                >
-                                  关闭时段
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        {!data.slots.some(
+                  {!coach ? (
+                    <div className="available-agenda">
+                      <p className="muted">
+                        只显示可以预约的时间。选择时段后，还可以给教练留言。
+                      </p>
+                      {days.map((day) => {
+                        const slots = available.filter(
                           (s) =>
                             displayTime(s.starts_at, zone, "yyyy-MM-dd") ===
                             day,
-                        ) && <span className="no-slot">暂无开放时段</span>}
-                      </div>
-                    ))}
-                  </div>
+                        );
+                        if (!slots.length) return null;
+                        return (
+                          <section className="agenda-day" key={day}>
+                            <h3>
+                              {displayTime(
+                                localToISO(day + "T12:00", zone),
+                                zone,
+                                "MM月dd日 EEEE",
+                              )}
+                              <small>
+                                {day === scheduleDays(zone, 0)[0]
+                                  ? "今天 · "
+                                  : ""}
+                                {slots.length} 个可选时段
+                              </small>
+                            </h3>
+                            <div className="agenda-times">
+                              {slots.map((s) => (
+                                <button
+                                  className="btn secondary"
+                                  key={s.id}
+                                  onClick={() => book(s)}
+                                  aria-label={`预约 ${displayTime(s.starts_at, zone)} 至 ${displayTime(s.ends_at, zone, "HH:mm")}`}
+                                >
+                                  <Clock3 size={16} />
+                                  {displayTime(
+                                    s.starts_at,
+                                    zone,
+                                    "HH:mm",
+                                  )} – {displayTime(s.ends_at, zone, "HH:mm")}
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+                        );
+                      })}
+                      {!available.length && (
+                        <Empty
+                          text="这 7 天暂无可预约时段。可以查看下一周，或联系教练开放时间。"
+                          action={
+                            <button
+                              className="btn secondary"
+                              onClick={() => setWeek(week + 1)}
+                            >
+                              查看下一周 <ArrowRight size={16} />
+                            </button>
+                          }
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="calendar-grid">
+                      {days.map((day) => (
+                        <div className="calendar-day" key={day}>
+                          <div className="day-heading">
+                            <span>
+                              {displayTime(
+                                localToISO(day + "T12:00", zone),
+                                zone,
+                                "EEE",
+                              )}
+                            </span>
+                            <strong>{day.slice(8)}</strong>
+                          </div>
+                          {data.slots
+                            .filter(
+                              (s) =>
+                                displayTime(s.starts_at, zone, "yyyy-MM-dd") ===
+                                day,
+                            )
+                            .map((s) => (
+                              <div
+                                className={`slot ${s.available ? "available" : "taken"}`}
+                                key={s.id}
+                              >
+                                <span>
+                                  {displayTime(s.starts_at, zone, "HH:mm")} –{" "}
+                                  {displayTime(s.ends_at, zone, "HH:mm")}
+                                </span>
+                                <strong>
+                                  {s.available ? "可预约" : "已预约"}
+                                </strong>
+                                {s.available && (
+                                  <button onClick={() => book(s)}>
+                                    {coach ? "代预约" : "预约"}{" "}
+                                    <Plus size={13} />
+                                  </button>
+                                )}
+                                {coach && s.available && (
+                                  <button
+                                    className="slot-remove"
+                                    onClick={() =>
+                                      setDialog({
+                                        title: "关闭此时段",
+                                        description: displayTime(
+                                          s.starts_at,
+                                          zone,
+                                        ),
+                                        fields: [],
+                                        submit: "关闭时段",
+                                        action: () =>
+                                          mutate("save_slot", { p_id: s.id }),
+                                      })
+                                    }
+                                  >
+                                    关闭时段
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          {!data.slots.some(
+                            (s) =>
+                              displayTime(s.starts_at, zone, "yyyy-MM-dd") ===
+                              day,
+                          ) && <span className="no-slot">暂无开放时段</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="panel-bottom">
                     <span>预约后可在「课程预约」中改期或取消。</span>
                     {coach && (
@@ -2130,8 +2359,10 @@ export default function Studio() {
               <div className="toolbar">
                 <div className="segmented">
                   {[
+                    ["upcoming", "接下来"],
+                    ["today", "今天"],
+                    ...(coach ? [["pending", "待确认完成"]] : []),
                     ["all", "全部"],
-                    ["booked", "已预约"],
                     ["completed", "已完成"],
                     ["cancelled", "已取消"],
                   ].map(([id, label]) => (
@@ -2159,10 +2390,22 @@ export default function Studio() {
                 ownAppointments
                   .filter(
                     (b) =>
-                      (filter === "all" || b.status === filter) &&
-                      name(b.member_id).includes(query),
+                      bookingMatches(b, filter, zone) &&
+                      name(b.member_id)
+                        .toLowerCase()
+                        .includes(query.trim().toLowerCase()),
                   )
                   .sort((a, b) => compareBookings(a, b)),
+                filter === "pending"
+                  ? "没有待确认完成的课程"
+                  : filter === "today"
+                    ? "今天没有符合条件的课程"
+                    : query
+                      ? "没有找到这位学员的预约"
+                      : filter === "upcoming"
+                        ? "暂无接下来的训练"
+                        : "当前筛选下没有预约",
+                filter === "upcoming" && !query.trim(),
               )}
             </section>
           )}
@@ -2170,8 +2413,26 @@ export default function Studio() {
             <section className="panel">
               <div className="toolbar">
                 <h2>
-                  全部学员 <span className="count">{members.length}</span>
+                  {filter === "needs-plan"
+                    ? "待制定计划"
+                    : filter === "needs-price"
+                      ? "待设置价格"
+                      : "学员列表"}{" "}
+                  <span className="count">{visibleMembers.length}</span>
                 </h2>
+                <select
+                  aria-label="筛选待办学员"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                >
+                  <option value="all">全部学员</option>
+                  <option value="needs-plan">
+                    待制定计划（{needsPlan.length}）
+                  </option>
+                  <option value="needs-price">
+                    待设置价格（{needsPrice.length}）
+                  </option>
+                </select>
                 <label className="search">
                   <Search size={17} />
                   <input
@@ -2194,116 +2455,143 @@ export default function Studio() {
                     </tr>
                   </thead>
                   <tbody>
-                    {members
-                      .filter((m) =>
-                        `${m.full_name} ${m.email}`
-                          .toLowerCase()
-                          .includes(query.toLowerCase()),
-                      )
-                      .map((m) => (
-                        <tr key={m.id}>
-                          <td>
-                            <div className="row gap">
-                              <Avatar name={m.full_name} />
-                              <div>
-                                <strong>{m.full_name}</strong>
-                                <small>{m.email}</small>
-                                <small>{m.phone || "未填写电话"}</small>
-                              </div>
+                    {visibleMembers.map((m) => (
+                      <tr key={m.id}>
+                        <td>
+                          <div className="row gap">
+                            <Avatar name={m.full_name} />
+                            <div>
+                              <strong>{m.full_name}</strong>
+                              <small>{m.email}</small>
+                              <small>{m.phone || "未填写电话"}</small>
                             </div>
-                          </td>
-                          <td>
-                            {data.plans.find(
-                              (p) =>
-                                p.member_id === m.id &&
-                                p.status === "published",
-                            )?.title || "尚未指定"}
-                            <small>{m.goals}</small>
-                          </td>
-                          <td>
-                            {
-                              data.appointments.filter(
-                                (a) =>
-                                  a.member_id === m.id && a.status === "booked",
-                              ).length
-                            }{" "}
-                            /{" "}
-                            {
-                              data.appointments.filter(
-                                (a) =>
-                                  a.member_id === m.id &&
-                                  a.status === "completed",
-                              ).length
-                            }
-                          </td>
-                          <td>
-                            {
-                              data.referrals.filter(
-                                (r) =>
-                                  r.referrer_id === m.id &&
-                                  r.status === "confirmed",
-                              ).length
-                            }{" "}
-                            人
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${m.active ? "confirmed" : "cancelled"}`}
+                          </div>
+                        </td>
+                        <td>
+                          {data.plans.find(
+                            (p) =>
+                              p.member_id === m.id &&
+                              !p.deleted_at &&
+                              p.status === "published",
+                          )?.title || "尚未指定"}
+                          <small>{m.goals}</small>
+                        </td>
+                        <td>
+                          {
+                            data.appointments.filter(
+                              (a) =>
+                                a.member_id === m.id && a.status === "booked",
+                            ).length
+                          }{" "}
+                          /{" "}
+                          {
+                            data.appointments.filter(
+                              (a) =>
+                                a.member_id === m.id &&
+                                a.status === "completed",
+                            ).length
+                          }
+                        </td>
+                        <td>
+                          {
+                            data.referrals.filter(
+                              (r) =>
+                                r.referrer_id === m.id &&
+                                r.status === "confirmed",
+                            ).length
+                          }{" "}
+                          人
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${m.active ? "confirmed" : "cancelled"}`}
+                          >
+                            {m.active ? "在训" : "已停用"}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="row wrap gap">
+                            {m.active && (
+                              <button
+                                className="text-btn"
+                                onClick={() => book(undefined, undefined, m.id)}
+                              >
+                                预约
+                              </button>
+                            )}
+                            <button
+                              className="text-btn"
+                              onClick={() => {
+                                navigate("records");
+                                setMemberFilter(m.id);
+                              }}
                             >
-                              {m.active ? "在训" : "已停用"}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="row wrap gap">
-                              <button
-                                className="text-btn"
-                                onClick={() => {
-                                  navigate("records");
+                              档案
+                            </button>
+                            <button
+                              className="text-btn"
+                              onClick={() => {
+                                if (memberNeeds(data, m.id).plan)
+                                  editPlan(
+                                    data.plans.find(
+                                      (p) =>
+                                        !p.deleted_at &&
+                                        p.member_id === m.id &&
+                                        p.status === "draft",
+                                    ),
+                                    m.id,
+                                  );
+                                else {
+                                  navigate("plans");
                                   setMemberFilter(m.id);
-                                }}
-                              >
-                                档案
-                              </button>
-                              <button
-                                className="text-btn"
-                                onClick={() => editPlan(undefined, m.id)}
-                              >
-                                计划
-                              </button>
-                              <button
-                                className="text-btn"
-                                onClick={() => editMemberPrice(m.id)}
-                              >
-                                专属价格
-                              </button>
-                              <button
-                                className="text-btn muted"
-                                onClick={() =>
-                                  setDialog({
-                                    title: m.active
-                                      ? "停用学员账号"
-                                      : "恢复学员账号",
-                                    description: `${m.full_name}：停用后无法读取训练资料或操作预约。已有预约仍保留，可由教练处理。`,
-                                    fields: [],
-                                    submit: "确认",
-                                    action: () =>
-                                      mutate("set_member_active", {
-                                        p_id: m.id,
-                                        p_active: !m.active,
-                                      }),
-                                  })
                                 }
-                              >
-                                {m.active ? "停用" : "恢复"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              }}
+                            >
+                              {memberNeeds(data, m.id).plan
+                                ? "制定计划"
+                                : "查看计划"}
+                            </button>
+                            <button
+                              className="text-btn"
+                              onClick={() => editMemberPrice(m.id)}
+                            >
+                              专属价格
+                            </button>
+                            <button
+                              className="text-btn muted"
+                              onClick={() =>
+                                setDialog({
+                                  title: m.active
+                                    ? "停用学员账号"
+                                    : "恢复学员账号",
+                                  description: `${m.full_name}：停用后无法读取训练资料或操作预约。已有预约仍保留，可由教练处理。`,
+                                  fields: [],
+                                  submit: "确认",
+                                  action: () =>
+                                    mutate("set_member_active", {
+                                      p_id: m.id,
+                                      p_active: !m.active,
+                                    }),
+                                })
+                              }
+                            >
+                              {m.active ? "停用" : "恢复"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
               {!members.length && <Empty text="还没有学员，先生成一个邀请码" />}
+              {!!members.length && !visibleMembers.length && (
+                <Empty
+                  text={
+                    query ? "没有符合搜索条件的学员" : "这项待办已全部处理完成"
+                  }
+                />
+              )}
             </section>
           )}
           {tab === "plans" && (
@@ -2411,11 +2699,13 @@ export default function Studio() {
                 <div className="panel">
                   <Empty
                     text={
-                      filter !== "all" || memberFilter !== "all"
-                        ? "当前筛选下没有训练计划"
-                        : coach
-                          ? "还没有训练计划，为学员制定第一份计划吧"
-                          : "教练发布计划后，你会在这里看到"
+                      !coach && filter === "published"
+                        ? "教练尚未发布当前计划，发布后会自动显示在这里。之前的计划可在「历史计划」查看。"
+                        : filter !== "all" || memberFilter !== "all"
+                          ? "当前筛选下没有训练计划"
+                          : coach
+                            ? "还没有训练计划，为学员制定第一份计划吧"
+                            : "教练发布计划后，你会在这里看到"
                     }
                   />
                 </div>
