@@ -122,6 +122,7 @@ const statusNames: Record<string, string> = {
   booked: "已预约",
   cancelled: "已取消",
   completed: "已完成",
+  no_show: "未到场 · No show",
   draft: "草稿",
   published: "当前计划",
   archived: "历史计划",
@@ -138,6 +139,7 @@ const actionNames: Record<string, string> = {
   reschedule: "改期",
   cancel: "取消",
   complete: "完成",
+  no_show: "未到场（No show）",
 };
 const emptyData = (): Data => ({
   ...demoData(),
@@ -803,8 +805,12 @@ export default function Studio() {
             booking.status = "cancelled";
             if (old) old.available = true;
           }
-          if (a.p_action === "complete" && booking.status === "booked") {
-            booking.status = "completed";
+          if (
+            (a.p_action === "complete" || a.p_action === "no_show") &&
+            booking.status === "booked"
+          ) {
+            const absent = a.p_action === "no_show";
+            booking.status = absent ? "no_show" : "completed";
             const monthly = membershipForDate(
               n.monthly_memberships,
               booking.member_id,
@@ -816,11 +822,21 @@ export default function Studio() {
               n.session_entries.push({
                 id,
                 member_id: booking.member_id,
-                kind: monthly ? "monthly_lesson" : "lesson",
+                kind: absent
+                  ? monthly
+                    ? "monthly_no_show"
+                    : "no_show"
+                  : monthly
+                    ? "monthly_lesson"
+                    : "lesson",
                 quantity: monthly ? 0 : -1,
-                note: monthly
-                  ? "包月内完成课程，不扣按次课时"
-                  : "完成课程，扣除 1 节",
+                note: absent
+                  ? monthly
+                    ? "包月内未到场，只记缺席，不扣按次课时"
+                    : "未到场，扣除 1 节"
+                  : monthly
+                    ? "包月内完成课程，不扣按次课时"
+                    : "完成课程，扣除 1 节",
                 amount: null,
                 currency: "USD",
                 appointment_id: booking.id,
@@ -1034,6 +1050,31 @@ export default function Studio() {
       action: (v) =>
         mutate("manage_booking", {
           p_action: "cancel",
+          p_appointment: b.id,
+          p_message: v.p_message,
+        }),
+    });
+  }
+  function markNoShow(b: Appointment) {
+    const monthly = membershipForDate(
+      data.monthly_memberships,
+      b.member_id,
+      displayTime(b.slots.starts_at, zone, "yyyy-MM-dd"),
+    );
+    setDialog({
+      title: "确认未到场（No show）",
+      description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${monthly ? "此课程在包月有效期内，只记录缺席，不扣按次课时。" : `确认后扣除 1 节按次课时，预计余额 ${memberSessionStats(data, b.member_id).balance - 1} 节。余额不足也会扣课，请核对是否遗漏购课。`}不计入已完成次数和训练时长。保存后不可重复结算；如扣课有误，可在课时账户中调整并保留原因。`,
+      fields: [
+        {
+          name: "p_message",
+          label: "缺席备注（选填，学员可见）",
+          type: "textarea",
+        },
+      ],
+      submit: monthly ? "确认缺席 · 不扣课" : "确认缺席并扣 1 节",
+      action: (v) =>
+        mutate("manage_booking", {
+          p_action: "no_show",
           p_appointment: b.id,
           p_message: v.p_message,
         }),
@@ -1881,7 +1922,7 @@ export default function Studio() {
                       value={
                         b.status === "booked" &&
                         Date.parse(b.slots.ends_at) <= Date.now()
-                          ? "待确认完成"
+                          ? "待确认结果"
                           : b.status === "booked" &&
                               Date.parse(b.slots.starts_at) <= Date.now()
                             ? "进行中"
@@ -1897,12 +1938,26 @@ export default function Studio() {
                     {data.settings.location}
                   </p>
                   {b.message && <small>预约留言：{b.message}</small>}
-                  {b.reason && <small>最近变更原因：{b.reason}</small>}
+                  {b.reason && (
+                    <small>
+                      {b.status === "no_show" ? "缺席备注：" : "最近变更原因："}
+                      {b.reason}
+                    </small>
+                  )}
+                  {b.status === "no_show" && (
+                    <small>
+                      {data.session_entries.find(
+                        (e) => e.appointment_id === b.id,
+                      )?.note || "已记录缺席"}{" "}
+                      · 不计入完成训练
+                    </small>
+                  )}
                 </div>
                 <div className="booking-actions">
                   {coach &&
                     members.some((m) => m.id === b.member_id && m.active) &&
                     b.status !== "cancelled" &&
+                    b.status !== "no_show" &&
                     Date.parse(b.slots.starts_at) <= Date.now() && (
                       <button
                         className="btn secondary small"
@@ -1954,6 +2009,17 @@ export default function Studio() {
                         }
                       >
                         完成
+                      </button>
+                    )}
+                  {coach &&
+                    data.credits_ready &&
+                    b.status === "booked" &&
+                    Date.parse(b.slots.ends_at) <= Date.now() && (
+                      <button
+                        className="btn secondary small"
+                        onClick={() => markNoShow(b)}
+                      >
+                        No show · 未到场
                       </button>
                     )}
                   <button
@@ -2234,7 +2300,7 @@ export default function Studio() {
                       : data.credits_ready &&
                           memberSessionStats(data, current.id).membership
                         ? `包月有效至 ${memberSessionStats(data, current.id).membership!.ends_on}，有效期内不限次数。`
-                        : "确认完成课程后扣课，预约和改期不提前扣除。"}
+                        : "完成或未到场各扣 1 节，预约和改期不提前扣除。"}
                   </p>
                 </div>
                 <button
@@ -2249,7 +2315,7 @@ export default function Studio() {
                   <button onClick={() => openBookings("pending")}>
                     <strong>{pendingBookings.length}</strong>
                     <span>
-                      课程待确认完成<small>课后确认，顺手写记录</small>
+                      课程待确认结果<small>课后标记完成或未到场</small>
                     </span>
                     <ChevronRight size={18} />
                   </button>
@@ -2705,9 +2771,10 @@ export default function Studio() {
                   {[
                     ["upcoming", "接下来"],
                     ["today", "今天"],
-                    ...(coach ? [["pending", "待确认完成"]] : []),
+                    ...(coach ? [["pending", "待确认结果"]] : []),
                     ["all", "全部"],
                     ["completed", "已完成"],
+                    ["no_show", "未到场"],
                     ["cancelled", "已取消"],
                   ].map(([id, label]) => (
                     <button
@@ -2741,7 +2808,7 @@ export default function Studio() {
                   )
                   .sort((a, b) => compareBookings(a, b)),
                 filter === "pending"
-                  ? "没有待确认完成的课程"
+                  ? "没有待确认结果的课程"
                   : filter === "today"
                     ? "今天没有符合条件的课程"
                     : query

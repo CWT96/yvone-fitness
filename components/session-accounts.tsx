@@ -95,12 +95,12 @@ export function SessionAccounts({
               [
                 "累计完成授课",
                 `${allStats.reduce((sum, s) => sum + s.completed, 0)} 节`,
-                `累计 ${allStats.reduce((sum, s) => sum + s.hours, 0).toFixed(1)} 小时（按排课时长）`,
+                `累计 ${allStats.reduce((sum, s) => sum + s.hours, 0).toFixed(1)} 小时 · 另有 ${allStats.reduce((sum, s) => sum + s.noShows, 0)} 次缺席`,
               ],
               [
                 "本月完成",
                 `${allStats.reduce((sum, s) => sum + s.thisMonth, 0)} 节`,
-                "按上课日期统计，取消不计入",
+                "按上课日期统计，取消及缺席不计入",
               ],
               [
                 "已预约未上",
@@ -108,9 +108,9 @@ export function SessionAccounts({
                 "含进行中课程，尚未扣课",
               ],
               [
-                "待确认完成",
+                "待确认结果",
                 `${data.appointments.filter((b) => b.status === "booked" && Date.parse(b.slots.ends_at) <= Date.now()).length} 节`,
-                "确认完成后才计入授课统计",
+                "标记完成或未到场；只有完成计入授课统计",
               ],
             ].map(([label, value, note]) => (
               <div className="stat-card" key={label}>
@@ -148,7 +148,8 @@ export function SessionAccounts({
             <div>
               <h2>学员课时总览</h2>
               <p className="muted">
-                余额包含已购和手动调整；仅确认完成的按次课程会扣课。已预约另外列出。
+                按次课程完成或未到场均扣 1
+                节；包月内不扣按次余额。已预约另外列出。
               </p>
             </div>
           </div>
@@ -195,6 +196,7 @@ export function SessionAccounts({
                           <td>{s.upcoming} 节</td>
                           <td>
                             {s.completed} 节 / {s.hours.toFixed(1)} 小时
+                            <small>另有 {s.noShows} 次缺席</small>
                           </td>
                           <td>
                             {s.membership
@@ -237,7 +239,8 @@ export function SessionAccounts({
                 {coach ? `${selected.full_name} 的课时账户` : "我的课时账户"}
               </h2>
               <p className="muted">
-                一节按次训练扣 1 节；训练时长按实际排课时长另外统计。
+                按次课程完成或未到场各扣 1
+                节；包月缺席只记次数。缺席不计入训练次数和时长。
               </p>
             </div>
             {coach && (
@@ -277,7 +280,7 @@ export function SessionAccounts({
               [
                 "历史完成",
                 `${stats.completed} 节`,
-                `累计 ${stats.hours.toFixed(1)} 小时`,
+                `累计 ${stats.hours.toFixed(1)} 小时 · 另有 ${stats.noShows} 次缺席`,
               ],
               [
                 "本月完成",
@@ -368,7 +371,7 @@ export function SessionAccounts({
               <div>
                 <h2>课时流水</h2>
                 <p className="muted">
-                  每笔购课、调整和完成课程都保留记录；包月上课显示
+                  每笔购课、调整、完成和缺席都保留记录；包月上课及缺席显示
                   0，不扣按次余额。
                 </p>
               </div>
@@ -427,7 +430,7 @@ export function SessionAccounts({
                               {e.note}
                               {b && (
                                 <small>
-                                  上课：
+                                  排课：
                                   {displayTime(
                                     b.slots.starts_at,
                                     zone,
@@ -456,9 +459,9 @@ export function SessionAccounts({
           <section className="panel">
             <div className="section-head">
               <div>
-                <h2>历史上课记录</h2>
+                <h2>历史课程记录</h2>
                 <p className="muted">
-                  只统计已确认完成的课程，取消的预约不计入。
+                  完成与缺席分别列出；缺席不计入训练次数和时长。
                   {stats.legacyCompleted > 0 &&
                     `${stats.legacyCompleted} 节历史课程未计入课时余额，不会自动补扣。`}
                 </p>
@@ -469,7 +472,7 @@ export function SessionAccounts({
                 <thead>
                   <tr>
                     <th>上课时间</th>
-                    <th>时长</th>
+                    <th>结果 / 训练时长</th>
                     <th>课时结算</th>
                   </tr>
                 </thead>
@@ -479,7 +482,7 @@ export function SessionAccounts({
                       .filter(
                         (b) =>
                           b.member_id === selected.id &&
-                          b.status === "completed",
+                          (b.status === "completed" || b.status === "no_show"),
                       )
                       .sort((a, b) =>
                         b.slots.starts_at.localeCompare(a.slots.starts_at),
@@ -503,12 +506,12 @@ export function SessionAccounts({
                               )}
                             </td>
                             <td>
-                              {Math.round(
-                                (Date.parse(b.slots.ends_at) -
-                                  Date.parse(b.slots.starts_at)) /
-                                  60000,
-                              )}{" "}
-                              分钟
+                              {b.status === "no_show"
+                                ? "未到场 · No show"
+                                : `已完成 · ${Math.round((Date.parse(b.slots.ends_at) - Date.parse(b.slots.starts_at)) / 60000)} 分钟`}
+                              {b.status === "no_show" && b.reason && (
+                                <small>{b.reason}</small>
+                              )}
                             </td>
                             <td>
                               {entry
@@ -523,9 +526,9 @@ export function SessionAccounts({
                 </tbody>
               </table>
             </div>
-            {!stats.completed && (
+            {!stats.completed && !stats.noShows && (
               <p className="accounts-empty">
-                完成第一节训练后，这里会保留上课记录。
+                教练确认课程结果后，这里会保留完成或缺席记录。
               </p>
             )}
           </section>

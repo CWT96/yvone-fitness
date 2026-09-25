@@ -16,7 +16,7 @@ test("ongoing sessions remain upcoming until their end, then become pending", ()
   assert.equal(bookingMatches(booking, "pending", zone, ongoing), false);
   assert.equal(bookingMatches(booking, "upcoming", zone, ended), false);
   assert.equal(bookingMatches(booking, "pending", zone, ended), true);
-  for (const status of ["completed", "cancelled"] as const) {
+  for (const status of ["completed", "cancelled", "no_show"] as const) {
     assert.equal(
       bookingMatches({ ...booking, status }, "pending", zone, ended),
       false,

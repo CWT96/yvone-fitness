@@ -22,7 +22,7 @@ export type Appointment = {
   id: string;
   member_id: string;
   slot_id: string;
-  status: "booked" | "cancelled" | "completed";
+  status: "booked" | "cancelled" | "completed" | "no_show";
   message: string;
   reason: string;
   created_at: string;
@@ -138,7 +138,13 @@ export type Data = {
 export type SessionEntry = {
   id: string;
   member_id: string;
-  kind: "purchase" | "adjustment" | "lesson" | "monthly_lesson";
+  kind:
+    | "purchase"
+    | "adjustment"
+    | "lesson"
+    | "monthly_lesson"
+    | "no_show"
+    | "monthly_no_show";
   quantity: number;
   note: string;
   amount: number | null;

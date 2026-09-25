@@ -584,6 +584,7 @@ main {
   background: #edf3e3;
   color: #698b44;
 }
+.badge.no_show,
 .badge.cancelled,
 .badge.failed {
   background: #f9ece8;

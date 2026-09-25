@@ -43,7 +43,9 @@ export function memberSessionStats(
     adjusted: entries
       .filter((e) => e.kind === "adjustment")
       .reduce((sum, e) => sum + e.quantity, 0),
-    used: entries.filter((e) => e.kind === "lesson").length,
+    used: entries.filter((e) => e.kind === "lesson" || e.kind === "no_show")
+      .length,
+    noShows: bookings.filter((b) => b.status === "no_show").length,
     monthlyUsed: entries.filter((e) => e.kind === "monthly_lesson").length,
     completed: completed.length,
     hours: completed.reduce(
@@ -77,6 +79,8 @@ export const entryLabels = {
   adjustment: "课时调整",
   lesson: "完成扣课",
   monthly_lesson: "包月上课",
+  no_show: "未到场扣课",
+  monthly_no_show: "包月缺席（不扣课）",
 };
 
 // Same numeric rules as the database; used before demo or real mutations.

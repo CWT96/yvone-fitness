@@ -73,6 +73,12 @@ test("session accounting: immutable journal, monthly coverage and role isolation
   const legacy = await booking(A, "2025-01-01T18:00Z", "completed");
   await db.exec(migration);
   await db.exec(migration);
+  const noShowMigration = await readFile(
+    new URL("202609250002_no_show.sql", dir),
+    "utf8",
+  );
+  await db.exec(noShowMigration);
+  await db.exec(noShowMigration);
   const balance = async (member: string) =>
     Number(
       (
@@ -247,6 +253,154 @@ test("session accounting: immutable journal, monthly coverage and role isolation
     },
   );
   await t.test(
+    "no show charges once, records notes and time in notifications, and enforces coach/end-time guards",
+    async () => {
+      const id = await booking(A, "2025-03-02T18:00Z");
+      const before = await balance(A);
+      await assert.rejects(
+        as(A, "select manage_booking('no_show',p_appointment=>$1)", [id]),
+        /课程已开始|仅教练/,
+      );
+      await assert.rejects(
+        as(B, "select manage_booking('no_show',p_appointment=>$1)", [id]),
+        /无权/,
+      );
+      const future = await booking(A, "2099-03-02T18:00Z");
+      await assert.rejects(
+        as(C, "select manage_booking('no_show',p_appointment=>$1)", [future]),
+        /课程结束后/,
+      );
+      const started = await booking(
+        A,
+        new Date(Date.now() - 30 * 60000).toISOString(),
+      );
+      await assert.rejects(
+        as(C, "select manage_booking('no_show',p_appointment=>$1)", [started]),
+        /课程结束后/,
+      );
+      await as(
+        C,
+        "select manage_booking('no_show',p_appointment=>$1,p_message=>'临时未到')",
+        [id],
+      );
+      assert.equal(await balance(A), before - 1);
+      assert.equal(
+        (await as(A, "select status from appointments where id=$1", [id]))
+          .rows[0].status,
+        "no_show",
+      );
+      const entries = (
+        await as(A, "select * from session_entries where appointment_id=$1", [
+          id,
+        ])
+      ).rows;
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].kind, "no_show");
+      assert.equal(entries[0].quantity, -1);
+      const event = (
+        await as(
+          A,
+          "select action,message from appointment_events where appointment_id=$1",
+          [id],
+        )
+      ).rows[0];
+      assert.equal(event.action, "no_show");
+      assert.equal(event.message, "临时未到");
+      const emails = (
+        await as(C, "select body from email_jobs where appointment_id=$1", [id])
+      ).rows;
+      assert.equal(emails.length, 2);
+      for (const email of emails) {
+        assert.match(String(email.body), /2025-03-02 10:00/);
+        assert.match(String(email.body), /未到场，扣除 1 节/);
+        assert.match(String(email.body), /临时未到/);
+      }
+      for (const action of ["no_show", "complete", "cancel", "reschedule"])
+        await assert.rejects(
+          as(C, "select manage_booking($1,p_appointment=>$2)", [action, id]),
+          /已标记未到场/,
+        );
+      assert.equal(await balance(A), before - 1);
+      await assert.rejects(
+        as(A, "update appointments set status='no_show' where id=$1", [future]),
+        /permission denied/,
+      );
+      await assert.rejects(
+        as(C, "select record_session_credit($1,$2,'no_show',-1,'fake')", [
+          randomUUID(),
+          A,
+        ]),
+        /有效/,
+      );
+      const slot = (
+        await as(C, "select slot_id from appointments where id=$1", [id])
+      ).rows[0].slot_id;
+      await assert.rejects(
+        db.query(
+          "insert into appointments(member_id,slot_id,created_by) values($1,$2,$3)",
+          [A, slot, C],
+        ),
+        /one_booking_per_slot/,
+      );
+      assert.equal(
+        (
+          await as(
+            B,
+            "select * from appointment_events where appointment_id=$1",
+            [id],
+          )
+        ).rows.length,
+        0,
+      );
+    },
+  );
+  await t.test(
+    "monthly no show uses Pacific date, consumes zero credits and preserves history on migration rerun",
+    async () => {
+      const membership = randomUUID();
+      await as(
+        C,
+        "select record_monthly_membership($1,$2,'2025-03-31','2025-03-31','包月缺席测试')",
+        [membership, A],
+      );
+      const id = await booking(A, "2025-04-01T06:00Z");
+      const before = await balance(A);
+      await as(C, "select manage_booking('no_show',p_appointment=>$1)", [id]);
+      const entry = (
+        await as(A, "select * from session_entries where appointment_id=$1", [
+          id,
+        ])
+      ).rows[0];
+      assert.equal(entry.kind, "monthly_no_show");
+      assert.equal(entry.quantity, 0);
+      assert.equal(entry.membership_id, membership);
+      assert.equal(await balance(A), before);
+      await db.exec(noShowMigration);
+      assert.equal(await balance(A), before);
+      assert.equal(
+        (
+          await as(A, "select * from session_entries where appointment_id=$1", [
+            id,
+          ])
+        ).rows.length,
+        1,
+      );
+      const outside = await booking(A, "2025-04-01T07:00Z");
+      await as(C, "select manage_booking('no_show',p_appointment=>$1)", [
+        outside,
+      ]);
+      assert.equal(await balance(A), before - 1);
+      const emails = (
+        await as(C, "select body from email_jobs where appointment_id=$1", [id])
+      ).rows;
+      for (const email of emails)
+        assert.match(
+          String(email.body),
+          /包月内未到场，只记缺席，不扣按次课时/,
+        );
+    },
+  );
+  await t.test(
     "each student sees only their own journal and memberships; no direct or RPC editing",
     async () => {
       assert.equal(
@@ -341,4 +495,37 @@ test("session stats separate balance, completed duration, future commitments and
   assert.equal(defaultMonthlyEnd("2026-01-31"), "2026-02-27");
   assert.throws(() => validateCredit(1.5, "purchase", "test"));
   assert.throws(() => validateCredit(0, "adjustment", "test"));
+});
+
+test("no shows reduce balance without inflating completed sessions or training hours", () => {
+  const data = demoData();
+  const b = data.appointments.find((b) => b.id === "booking-past")!;
+  b.status = "no_show";
+  data.session_entries.push({
+    id: "absence",
+    member_id: b.member_id,
+    kind: "no_show",
+    quantity: -1,
+    note: "未到场",
+    amount: null,
+    currency: "USD",
+    appointment_id: b.id,
+    membership_id: null,
+    created_at: new Date().toISOString(),
+  });
+  const stats = memberSessionStats(data, b.member_id);
+  assert.equal(stats.balance, 2);
+  assert.equal(stats.used, 1);
+  assert.equal(stats.noShows, 1);
+  assert.equal(stats.completed, 0);
+  assert.equal(stats.hours, 0);
+  assert.equal(stats.thisMonth, 0);
+  assert.equal(stats.legacyCompleted, 0);
+  data.session_entries[data.session_entries.length - 1].kind =
+    "monthly_no_show";
+  data.session_entries[data.session_entries.length - 1].quantity = 0;
+  const monthly = memberSessionStats(data, b.member_id);
+  assert.equal(monthly.balance, 3);
+  assert.equal(monthly.noShows, 1);
+  assert.equal(monthly.monthlyUsed, 0);
 });
