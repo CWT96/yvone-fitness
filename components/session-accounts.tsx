@@ -1,4 +1,5 @@
 "use client";
+import { Paginated } from "@/components/paginated";
 import { useState } from "react";
 import type { Data, MonthlyMembership } from "@/lib/types";
 import { entryLabels, memberSessionStats } from "@/lib/session-accounts";
@@ -164,54 +165,63 @@ export function SessionAccounts({
                 </tr>
               </thead>
               <tbody>
-                {visibleMembers.map((m) => {
-                  const s = memberSessionStats(data, m.id);
-                  return (
-                    <tr key={m.id}>
-                      <td>
-                        <strong>{m.full_name}</strong>
-                        <small>{m.active ? "在训" : "已停用"}</small>
-                      </td>
-                      <td>
-                        <strong
-                          className={s.balance < 0 ? "account-warning" : ""}
-                        >
-                          {s.balance} 节
-                        </strong>
-                        {s.balance < 0 ? (
-                          <small>待补录或核对</small>
-                        ) : s.balance < s.needsCredits ? (
-                          <small>不足覆盖已预约课程</small>
-                        ) : null}
-                      </td>
-                      <td>{s.upcoming} 节</td>
-                      <td>
-                        {s.completed} 节 / {s.hours.toFixed(1)} 小时
-                      </td>
-                      <td>
-                        {s.membership
-                          ? `有效至 ${s.membership.ends_on}`
-                          : "当前无有效包月"}
-                      </td>
-                      <td>
-                        <div className="row gap wrap">
-                          <button
-                            className="text-btn"
-                            onClick={() => onSelect(m.id)}
-                          >
-                            查看明细
-                          </button>
-                          <button
-                            className="text-btn"
-                            onClick={() => onCredit(m.id)}
-                          >
-                            录入购课
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                <Paginated
+                  items={visibleMembers}
+                  resetKey={[memberId, search, onlyShort]}
+                  label="课时账户"
+                  tableColumns={6}
+                >
+                  {(pageItems, pageOffset) =>
+                    pageItems.map((m) => {
+                      const s = memberSessionStats(data, m.id);
+                      return (
+                        <tr key={m.id}>
+                          <td>
+                            <strong>{m.full_name}</strong>
+                            <small>{m.active ? "在训" : "已停用"}</small>
+                          </td>
+                          <td>
+                            <strong
+                              className={s.balance < 0 ? "account-warning" : ""}
+                            >
+                              {s.balance} 节
+                            </strong>
+                            {s.balance < 0 ? (
+                              <small>待补录或核对</small>
+                            ) : s.balance < s.needsCredits ? (
+                              <small>不足覆盖已预约课程</small>
+                            ) : null}
+                          </td>
+                          <td>{s.upcoming} 节</td>
+                          <td>
+                            {s.completed} 节 / {s.hours.toFixed(1)} 小时
+                          </td>
+                          <td>
+                            {s.membership
+                              ? `有效至 ${s.membership.ends_on}`
+                              : "当前无有效包月"}
+                          </td>
+                          <td>
+                            <div className="row gap wrap">
+                              <button
+                                className="text-btn"
+                                onClick={() => onSelect(m.id)}
+                              >
+                                查看明细
+                              </button>
+                              <button
+                                className="text-btn"
+                                onClick={() => onCredit(m.id)}
+                              >
+                                录入购课
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  }
+                </Paginated>
               </tbody>
             </table>
           </div>
@@ -306,40 +316,49 @@ export function SessionAccounts({
             <p className="muted">
               有效期内不限次数（含开始日和结束日）。按上课日期判断，包月上课不会消耗按次余额。
             </p>
-            {data.monthly_memberships
-              .filter((m) => m.member_id === selected.id)
-              .sort((a, b) => b.starts_on.localeCompare(a.starts_on))
-              .map((m) => (
-                <article className="membership-row" key={m.id}>
-                  <div>
-                    <strong>
-                      {m.starts_on} — {m.ends_on}
-                    </strong>
-                    <p>
-                      {m.cancelled_at
-                        ? "已作废"
-                        : m.starts_on > today
-                          ? "尚未开始"
-                          : m.ends_on < today
-                            ? "已到期"
-                            : "有效中 · 不限次数"}{" "}
-                      · {money(m.amount, m.currency)}
-                    </p>
-                    <small>
-                      {m.note}
-                      {m.cancel_reason ? ` · 作废原因：${m.cancel_reason}` : ""}
-                    </small>
-                  </div>
-                  {coach && !m.cancelled_at && (
-                    <button
-                      className="text-btn"
-                      onClick={() => onCancelMonthly(m)}
-                    >
-                      作废
-                    </button>
-                  )}
-                </article>
-              ))}
+            <Paginated
+              items={data.monthly_memberships
+                .filter((m) => m.member_id === selected.id)
+                .sort((a, b) => b.starts_on.localeCompare(a.starts_on))}
+              resetKey={[memberId, search, onlyShort]}
+              label="包月记录"
+            >
+              {(pageItems, pageOffset) =>
+                pageItems.map((m) => (
+                  <article className="membership-row" key={m.id}>
+                    <div>
+                      <strong>
+                        {m.starts_on} — {m.ends_on}
+                      </strong>
+                      <p>
+                        {m.cancelled_at
+                          ? "已作废"
+                          : m.starts_on > today
+                            ? "尚未开始"
+                            : m.ends_on < today
+                              ? "已到期"
+                              : "有效中 · 不限次数"}{" "}
+                        · {money(m.amount, m.currency)}
+                      </p>
+                      <small>
+                        {m.note}
+                        {m.cancel_reason
+                          ? ` · 作废原因：${m.cancel_reason}`
+                          : ""}
+                      </small>
+                    </div>
+                    {coach && !m.cancelled_at && (
+                      <button
+                        className="text-btn"
+                        onClick={() => onCancelMonthly(m)}
+                      >
+                        作废
+                      </button>
+                    )}
+                  </article>
+                ))
+              }
+            </Paginated>
             {!data.monthly_memberships.some(
               (m) => m.member_id === selected.id,
             ) && <p className="muted">暂无包月记录。</p>}
@@ -366,54 +385,62 @@ export function SessionAccounts({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.session_entries
-                    .filter((e) => e.member_id === selected.id)
-                    .sort(
-                      (a, b) =>
-                        b.created_at.localeCompare(a.created_at) ||
-                        b.id.localeCompare(a.id),
-                    )
-                    .map((e) => {
-                      const b = data.appointments.find(
-                        (b) => b.id === e.appointment_id,
-                      );
-                      return (
-                        <tr key={e.id}>
-                          <td>
-                            {displayTime(
-                              e.created_at,
-                              zone,
-                              "yyyy.MM.dd HH:mm",
-                            )}
-                          </td>
-                          <td>{entryLabels[e.kind]}</td>
-                          <td>
-                            <strong>
-                              {e.quantity > 0 ? "+" : ""}
-                              {e.quantity} 节
-                            </strong>
-                          </td>
-                          <td>
-                            {e.kind === "purchase"
-                              ? money(e.amount, e.currency)
-                              : "—"}
-                          </td>
-                          <td>
-                            {e.note}
-                            {b && (
-                              <small>
-                                上课：
-                                {displayTime(
-                                  b.slots.starts_at,
-                                  zone,
-                                  "yyyy.MM.dd HH:mm",
-                                )}
-                              </small>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  <Paginated
+                    items={data.session_entries
+                      .filter((e) => e.member_id === selected.id)
+                      .sort(
+                        (a, b) =>
+                          b.created_at.localeCompare(a.created_at) ||
+                          b.id.localeCompare(a.id),
+                      )}
+                    resetKey={[memberId, search, onlyShort]}
+                    label="课时流水"
+                    tableColumns={5}
+                  >
+                    {(pageItems, pageOffset) =>
+                      pageItems.map((e) => {
+                        const b = data.appointments.find(
+                          (b) => b.id === e.appointment_id,
+                        );
+                        return (
+                          <tr key={e.id}>
+                            <td>
+                              {displayTime(
+                                e.created_at,
+                                zone,
+                                "yyyy.MM.dd HH:mm",
+                              )}
+                            </td>
+                            <td>{entryLabels[e.kind]}</td>
+                            <td>
+                              <strong>
+                                {e.quantity > 0 ? "+" : ""}
+                                {e.quantity} 节
+                              </strong>
+                            </td>
+                            <td>
+                              {e.kind === "purchase"
+                                ? money(e.amount, e.currency)
+                                : "—"}
+                            </td>
+                            <td>
+                              {e.note}
+                              {b && (
+                                <small>
+                                  上课：
+                                  {displayTime(
+                                    b.slots.starts_at,
+                                    zone,
+                                    "yyyy.MM.dd HH:mm",
+                                  )}
+                                </small>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    }
+                  </Paginated>
                 </tbody>
               </table>
             </div>
@@ -447,43 +474,52 @@ export function SessionAccounts({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.appointments
-                    .filter(
-                      (b) =>
-                        b.member_id === selected.id && b.status === "completed",
-                    )
-                    .sort((a, b) =>
-                      b.slots.starts_at.localeCompare(a.slots.starts_at),
-                    )
-                    .map((b) => {
-                      const entry = data.session_entries.find(
-                        (e) => e.appointment_id === b.id,
-                      );
-                      return (
-                        <tr key={b.id}>
-                          <td>
-                            {displayTime(
-                              b.slots.starts_at,
-                              zone,
-                              "yyyy.MM.dd EEE HH:mm",
-                            )}
-                          </td>
-                          <td>
-                            {Math.round(
-                              (Date.parse(b.slots.ends_at) -
-                                Date.parse(b.slots.starts_at)) /
-                                60000,
-                            )}{" "}
-                            分钟
-                          </td>
-                          <td>
-                            {entry
-                              ? entryLabels[entry.kind]
-                              : "历史课程 · 未计入余额"}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  <Paginated
+                    items={data.appointments
+                      .filter(
+                        (b) =>
+                          b.member_id === selected.id &&
+                          b.status === "completed",
+                      )
+                      .sort((a, b) =>
+                        b.slots.starts_at.localeCompare(a.slots.starts_at),
+                      )}
+                    resetKey={[memberId, search, onlyShort]}
+                    label="上课历史"
+                    tableColumns={3}
+                  >
+                    {(pageItems, pageOffset) =>
+                      pageItems.map((b) => {
+                        const entry = data.session_entries.find(
+                          (e) => e.appointment_id === b.id,
+                        );
+                        return (
+                          <tr key={b.id}>
+                            <td>
+                              {displayTime(
+                                b.slots.starts_at,
+                                zone,
+                                "yyyy.MM.dd EEE HH:mm",
+                              )}
+                            </td>
+                            <td>
+                              {Math.round(
+                                (Date.parse(b.slots.ends_at) -
+                                  Date.parse(b.slots.starts_at)) /
+                                  60000,
+                              )}{" "}
+                              分钟
+                            </td>
+                            <td>
+                              {entry
+                                ? entryLabels[entry.kind]
+                                : "历史课程 · 未计入余额"}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    }
+                  </Paginated>
                 </tbody>
               </table>
             </div>

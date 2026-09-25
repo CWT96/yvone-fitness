@@ -38,6 +38,7 @@ export type Plan = {
   created_at: string;
 };
 export type RecordEntry = {
+  measurements?: import("./measurements").Measurements;
   deleted_at?: string | null;
   id: string;
   member_id: string;

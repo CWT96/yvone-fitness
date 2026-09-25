@@ -1,4 +1,12 @@
 "use client";
+import { Paginated } from "@/components/paginated";
+import {
+  kgToLb,
+  poundsToStoredKg,
+  measurementFields,
+  readMeasurements,
+  type Measurements,
+} from "@/lib/measurements";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -75,6 +83,7 @@ type Field = {
   minLength?: number;
 };
 type Dialog = {
+  optionalFields?: Field[];
   title: string;
   description?: string;
   fields: Field[];
@@ -321,6 +330,36 @@ function DialogView({
               {f.hint && <small>{f.hint}</small>}
             </label>
           ),
+        )}
+        {dialog.optionalFields && (
+          <details
+            className="extra-measurements"
+            open={
+              dialog.optionalFields.some(
+                (f) => f.value != null && f.value !== "",
+              ) || undefined
+            }
+          >
+            <summary>围度与身体状态（选填）</summary>
+            <p className="muted">
+              身高和围度用英寸（in）；只填写本次测量的数据。
+            </p>
+            <div className="measurement-fields">
+              {dialog.optionalFields.map((f) => (
+                <label className="field" key={f.name}>
+                  <span>{f.label}</span>
+                  <input
+                    name={f.name}
+                    type="number"
+                    defaultValue={String(f.value ?? "")}
+                    min={f.min}
+                    max={f.max}
+                    step={f.step || "any"}
+                  />
+                </label>
+              ))}
+            </div>
+          </details>
         )}
         <div className="modal-footer">
           {!dialog.readOnly && (
@@ -828,13 +867,23 @@ export default function Studio() {
           created_at: now,
         });
       }
-      if (fn === "save_record") {
+      if (fn === "save_record" || fn === "save_record_us") {
+        const previousWeight = n.records.find((r) => r.id === a.p_id)?.weight;
         n.records = n.records.filter((r) => r.id !== a.p_id);
         n.records.unshift({
           id: String(a.p_id || id),
           member_id: String(a.p_member),
           recorded_on: String(a.p_date),
-          weight: a.p_weight === null ? null : Number(a.p_weight),
+          weight:
+            fn === "save_record_us"
+              ? poundsToStoredKg(
+                  a.p_weight_lbs == null ? null : Number(a.p_weight_lbs),
+                  previousWeight,
+                )
+              : a.p_weight === null
+                ? null
+                : Number(a.p_weight),
+          measurements: (a.p_measurements || {}) as Measurements,
           body_fat: a.p_fat === null ? null : Number(a.p_fat),
           notes: String(a.p_notes),
           shared: Boolean(a.p_shared),
@@ -1081,11 +1130,12 @@ export default function Studio() {
         },
         {
           name: "p_weight",
-          label: "体重 / kg（选填）",
+          label: "体重 / lb（磅，选填）",
           type: "number",
-          value: record?.weight ?? "",
+          value: kgToLb(record?.weight) ?? "",
           min: 1,
-          max: 499,
+          max: 1100,
+          step: 0.1,
         },
         {
           name: "p_fat",
@@ -1097,17 +1147,27 @@ export default function Studio() {
         },
         {
           name: "p_notes",
-          label: "训练表现、目标或身体情况",
+          label: "训练内容、表现、身体不适及下次重点",
           type: "textarea",
           value: record?.notes,
         },
       ],
+      optionalFields: measurementFields.map((f) => ({
+        name: f.key,
+        label: `${f.label} / ${f.unit}`,
+        type: "number",
+        value: record?.measurements?.[f.key] ?? "",
+        min: f.min,
+        max: f.max,
+        step: f.key === "resting_hr" ? 1 : 0.1,
+      })),
       action: (v) =>
-        mutate("save_record", {
+        mutate("save_record_us", {
           p_id: record?.id || null,
           p_member: record?.member_id || v.p_member,
           p_date: v.p_date,
-          p_weight: v.p_weight ? Number(v.p_weight) : null,
+          p_weight_lbs: v.p_weight ? Number(v.p_weight) : null,
+          p_measurements: readMeasurements(v),
           p_fat: v.p_fat ? Number(v.p_fat) : null,
           p_notes: v.p_notes,
           p_shared: v.intent === "publish",
@@ -1800,122 +1860,132 @@ export default function Studio() {
   ) =>
     items.length ? (
       <div className="booking-list">
-        {items.map((b) => (
-          <article className="booking-row" key={b.id}>
-            <div className="date-block">
-              <strong>{displayTime(b.slots.starts_at, zone, "dd")}</strong>
-              <span>{displayTime(b.slots.starts_at, zone, "yyyy.MM EEE")}</span>
-            </div>
-            <div className="booking-main">
-              <div className="row gap">
-                <h3>{coach ? name(b.member_id) : "一对一私教训练"}</h3>
-                <Badge
-                  value={
+        <Paginated
+          items={items}
+          resetKey={[tab, filter, memberFilter, query, current.id]}
+          label="预约"
+        >
+          {(pageItems, pageOffset) =>
+            pageItems.map((b) => (
+              <article className="booking-row" key={b.id}>
+                <div className="date-block">
+                  <strong>{displayTime(b.slots.starts_at, zone, "dd")}</strong>
+                  <span>
+                    {displayTime(b.slots.starts_at, zone, "yyyy.MM EEE")}
+                  </span>
+                </div>
+                <div className="booking-main">
+                  <div className="row gap">
+                    <h3>{coach ? name(b.member_id) : "一对一私教训练"}</h3>
+                    <Badge
+                      value={
+                        b.status === "booked" &&
+                        Date.parse(b.slots.ends_at) <= Date.now()
+                          ? "待确认完成"
+                          : b.status === "booked" &&
+                              Date.parse(b.slots.starts_at) <= Date.now()
+                            ? "进行中"
+                            : b.status
+                      }
+                    />
+                  </div>
+                  <p>
+                    <Clock3 size={14} />
+                    {displayTime(b.slots.starts_at, zone, "HH:mm")} –{" "}
+                    {displayTime(b.slots.ends_at, zone, "HH:mm")}
+                    <span className="separator">·</span>
+                    {data.settings.location}
+                  </p>
+                  {b.message && <small>预约留言：{b.message}</small>}
+                  {b.reason && <small>最近变更原因：{b.reason}</small>}
+                </div>
+                <div className="booking-actions">
+                  {coach &&
+                    members.some((m) => m.id === b.member_id && m.active) &&
+                    b.status !== "cancelled" &&
+                    Date.parse(b.slots.starts_at) <= Date.now() && (
+                      <button
+                        className="btn secondary small"
+                        onClick={() =>
+                          editRecord(
+                            undefined,
+                            b.member_id,
+                            displayTime(b.slots.starts_at, zone, "yyyy-MM-dd"),
+                          )
+                        }
+                      >
+                        写记录
+                      </button>
+                    )}
+                  {b.status === "booked" &&
+                    (coach || new Date(b.slots.starts_at) > new Date()) && (
+                      <>
+                        <button
+                          className="btn secondary small"
+                          onClick={() => book(undefined, b)}
+                        >
+                          改期
+                        </button>
+                        <button
+                          className="text-btn muted"
+                          onClick={() => cancelBooking(b)}
+                        >
+                          取消
+                        </button>
+                      </>
+                    )}
+                  {coach &&
                     b.status === "booked" &&
-                    Date.parse(b.slots.ends_at) <= Date.now()
-                      ? "待确认完成"
-                      : b.status === "booked" &&
-                          Date.parse(b.slots.starts_at) <= Date.now()
-                        ? "进行中"
-                        : b.status
-                  }
-                />
-              </div>
-              <p>
-                <Clock3 size={14} />
-                {displayTime(b.slots.starts_at, zone, "HH:mm")} –{" "}
-                {displayTime(b.slots.ends_at, zone, "HH:mm")}
-                <span className="separator">·</span>
-                {data.settings.location}
-              </p>
-              {b.message && <small>预约留言：{b.message}</small>}
-              {b.reason && <small>最近变更原因：{b.reason}</small>}
-            </div>
-            <div className="booking-actions">
-              {coach &&
-                members.some((m) => m.id === b.member_id && m.active) &&
-                b.status !== "cancelled" &&
-                Date.parse(b.slots.starts_at) <= Date.now() && (
+                    new Date(b.slots.ends_at) <= new Date() && (
+                      <button
+                        className="btn small"
+                        onClick={() =>
+                          setDialog({
+                            title: "确认课程完成",
+                            description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? "此课程在包月有效期内，确认后记录上课次数，不扣按次课时。" : `确认后扣除 1 节按次课时，预计余额 ${memberSessionStats(data, b.member_id).balance - 1} 节。余额不足也会记录完成，请核对是否遗漏购课。`) : "课时账户尚未启用，本次仅记录课程完成。"}`,
+                            fields: [],
+                            submit: "标记完成",
+                            action: () =>
+                              mutate("manage_booking", {
+                                p_action: "complete",
+                                p_appointment: b.id,
+                              }),
+                          })
+                        }
+                      >
+                        完成
+                      </button>
+                    )}
                   <button
-                    className="btn secondary small"
-                    onClick={() =>
-                      editRecord(
-                        undefined,
-                        b.member_id,
-                        displayTime(b.slots.starts_at, zone, "yyyy-MM-dd"),
-                      )
-                    }
-                  >
-                    写记录
-                  </button>
-                )}
-              {b.status === "booked" &&
-                (coach || new Date(b.slots.starts_at) > new Date()) && (
-                  <>
-                    <button
-                      className="btn secondary small"
-                      onClick={() => book(undefined, b)}
-                    >
-                      改期
-                    </button>
-                    <button
-                      className="text-btn muted"
-                      onClick={() => cancelBooking(b)}
-                    >
-                      取消
-                    </button>
-                  </>
-                )}
-              {coach &&
-                b.status === "booked" &&
-                new Date(b.slots.ends_at) <= new Date() && (
-                  <button
-                    className="btn small"
-                    onClick={() =>
+                    className="text-btn muted"
+                    onClick={() => {
                       setDialog({
-                        title: "确认课程完成",
-                        description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? "此课程在包月有效期内，确认后记录上课次数，不扣按次课时。" : `确认后扣除 1 节按次课时，预计余额 ${memberSessionStats(data, b.member_id).balance - 1} 节。余额不足也会记录完成，请核对是否遗漏购课。`) : "课时账户尚未启用，本次仅记录课程完成。"}`,
+                        title: "预约变更记录",
+                        readOnly: true,
+                        description:
+                          data.events
+                            .filter((e) => e.appointment_id === b.id)
+                            .sort((a, b) =>
+                              a.created_at.localeCompare(b.created_at),
+                            )
+                            .map(
+                              (e) =>
+                                `${displayTime(e.created_at, zone)} · ${actionNames[e.action]} · ${e.actor_id === current.id ? "我" : data.profiles.some((p) => p.id === e.actor_id) ? name(e.actor_id) : "教练"}${e.details.old_start ? " · 原时间 " + displayTime(e.details.old_start, zone) : ""}${e.details.new_start ? " → " + displayTime(e.details.new_start, zone) : ""}${e.message ? "\n" + e.message : ""}`,
+                            )
+                            .join("\n\n") || "暂无变更记录",
                         fields: [],
-                        submit: "标记完成",
-                        action: () =>
-                          mutate("manage_booking", {
-                            p_action: "complete",
-                            p_appointment: b.id,
-                          }),
-                      })
-                    }
+                        submit: "关闭",
+                        action: async () => {},
+                      });
+                    }}
                   >
-                    完成
+                    详情
                   </button>
-                )}
-              <button
-                className="text-btn muted"
-                onClick={() => {
-                  setDialog({
-                    title: "预约变更记录",
-                    readOnly: true,
-                    description:
-                      data.events
-                        .filter((e) => e.appointment_id === b.id)
-                        .sort((a, b) =>
-                          a.created_at.localeCompare(b.created_at),
-                        )
-                        .map(
-                          (e) =>
-                            `${displayTime(e.created_at, zone)} · ${actionNames[e.action]} · ${e.actor_id === current.id ? "我" : data.profiles.some((p) => p.id === e.actor_id) ? name(e.actor_id) : "教练"}${e.details.old_start ? " · 原时间 " + displayTime(e.details.old_start, zone) : ""}${e.details.new_start ? " → " + displayTime(e.details.new_start, zone) : ""}${e.message ? "\n" + e.message : ""}`,
-                        )
-                        .join("\n\n") || "暂无变更记录",
-                    fields: [],
-                    submit: "关闭",
-                    action: async () => {},
-                  });
-                }}
-              >
-                详情
-              </button>
-            </div>
-          </article>
-        ))}
+                </div>
+              </article>
+            ))
+          }
+        </Paginated>
       </div>
     ) : (
       <Empty
@@ -2729,141 +2799,153 @@ export default function Studio() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleMembers.map((m) => (
-                      <tr key={m.id}>
-                        <td>
-                          <div className="row gap">
-                            <Avatar name={m.full_name} />
-                            <div>
-                              <strong>{m.full_name}</strong>
-                              <small>{m.email}</small>
-                              <small>{m.phone || "未填写电话"}</small>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          {data.plans.find(
-                            (p) =>
-                              p.member_id === m.id &&
-                              !p.deleted_at &&
-                              p.status === "published",
-                          )?.title || "尚未指定"}
-                          <small>{m.goals}</small>
-                        </td>
-                        <td>
-                          {
-                            data.appointments.filter(
-                              (a) =>
-                                a.member_id === m.id && a.status === "booked",
-                            ).length
-                          }{" "}
-                          /{" "}
-                          {
-                            data.appointments.filter(
-                              (a) =>
-                                a.member_id === m.id &&
-                                a.status === "completed",
-                            ).length
-                          }
-                        </td>
-                        <td>
-                          {
-                            data.referrals.filter(
-                              (r) =>
-                                r.referrer_id === m.id &&
-                                r.status === "confirmed",
-                            ).length
-                          }{" "}
-                          人
-                        </td>
-                        <td>
-                          <span
-                            className={`badge ${m.active ? "confirmed" : "cancelled"}`}
-                          >
-                            {m.active ? "在训" : "已停用"}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="row wrap gap">
-                            <button
-                              className="text-btn"
-                              onClick={() => {
-                                navigate("credits");
-                                setMemberFilter(m.id);
-                              }}
-                            >
-                              课时
-                            </button>
-                            {m.active && (
-                              <button
-                                className="text-btn"
-                                onClick={() => book(undefined, undefined, m.id)}
-                              >
-                                预约
-                              </button>
-                            )}
-                            <button
-                              className="text-btn"
-                              onClick={() => {
-                                navigate("records");
-                                setMemberFilter(m.id);
-                              }}
-                            >
-                              档案
-                            </button>
-                            <button
-                              className="text-btn"
-                              onClick={() => {
-                                if (memberNeeds(data, m.id).plan)
-                                  editPlan(
-                                    data.plans.find(
-                                      (p) =>
-                                        !p.deleted_at &&
-                                        p.member_id === m.id &&
-                                        p.status === "draft",
-                                    ),
-                                    m.id,
-                                  );
-                                else {
-                                  navigate("plans");
-                                  setMemberFilter(m.id);
-                                }
-                              }}
-                            >
-                              {memberNeeds(data, m.id).plan
-                                ? "制定计划"
-                                : "查看计划"}
-                            </button>
-                            <button
-                              className="text-btn"
-                              onClick={() => editMemberPrice(m.id)}
-                            >
-                              专属价格
-                            </button>
-                            <button
-                              className="text-btn muted"
-                              onClick={() =>
-                                setDialog({
-                                  title: m.active
-                                    ? "停用学员账号"
-                                    : "恢复学员账号",
-                                  description: `${m.full_name}：停用后无法读取训练资料或操作预约。已有预约仍保留，可由教练处理。`,
-                                  fields: [],
-                                  submit: "确认",
-                                  action: () =>
-                                    mutate("set_member_active", {
-                                      p_id: m.id,
-                                      p_active: !m.active,
-                                    }),
-                                })
+                    <Paginated
+                      items={visibleMembers}
+                      resetKey={[tab, filter, memberFilter, query, current.id]}
+                      label="学员"
+                      tableColumns={6}
+                    >
+                      {(pageItems, pageOffset) =>
+                        pageItems.map((m) => (
+                          <tr key={m.id}>
+                            <td>
+                              <div className="row gap">
+                                <Avatar name={m.full_name} />
+                                <div>
+                                  <strong>{m.full_name}</strong>
+                                  <small>{m.email}</small>
+                                  <small>{m.phone || "未填写电话"}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              {data.plans.find(
+                                (p) =>
+                                  p.member_id === m.id &&
+                                  !p.deleted_at &&
+                                  p.status === "published",
+                              )?.title || "尚未指定"}
+                              <small>{m.goals}</small>
+                            </td>
+                            <td>
+                              {
+                                data.appointments.filter(
+                                  (a) =>
+                                    a.member_id === m.id &&
+                                    a.status === "booked",
+                                ).length
+                              }{" "}
+                              /{" "}
+                              {
+                                data.appointments.filter(
+                                  (a) =>
+                                    a.member_id === m.id &&
+                                    a.status === "completed",
+                                ).length
                               }
-                            >
-                              {m.active ? "停用" : "恢复"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            </td>
+                            <td>
+                              {
+                                data.referrals.filter(
+                                  (r) =>
+                                    r.referrer_id === m.id &&
+                                    r.status === "confirmed",
+                                ).length
+                              }{" "}
+                              人
+                            </td>
+                            <td>
+                              <span
+                                className={`badge ${m.active ? "confirmed" : "cancelled"}`}
+                              >
+                                {m.active ? "在训" : "已停用"}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="row wrap gap">
+                                <button
+                                  className="text-btn"
+                                  onClick={() => {
+                                    navigate("credits");
+                                    setMemberFilter(m.id);
+                                  }}
+                                >
+                                  课时
+                                </button>
+                                {m.active && (
+                                  <button
+                                    className="text-btn"
+                                    onClick={() =>
+                                      book(undefined, undefined, m.id)
+                                    }
+                                  >
+                                    预约
+                                  </button>
+                                )}
+                                <button
+                                  className="text-btn"
+                                  onClick={() => {
+                                    navigate("records");
+                                    setMemberFilter(m.id);
+                                  }}
+                                >
+                                  档案
+                                </button>
+                                <button
+                                  className="text-btn"
+                                  onClick={() => {
+                                    if (memberNeeds(data, m.id).plan)
+                                      editPlan(
+                                        data.plans.find(
+                                          (p) =>
+                                            !p.deleted_at &&
+                                            p.member_id === m.id &&
+                                            p.status === "draft",
+                                        ),
+                                        m.id,
+                                      );
+                                    else {
+                                      navigate("plans");
+                                      setMemberFilter(m.id);
+                                    }
+                                  }}
+                                >
+                                  {memberNeeds(data, m.id).plan
+                                    ? "制定计划"
+                                    : "查看计划"}
+                                </button>
+                                <button
+                                  className="text-btn"
+                                  onClick={() => editMemberPrice(m.id)}
+                                >
+                                  专属价格
+                                </button>
+                                <button
+                                  className="text-btn muted"
+                                  onClick={() =>
+                                    setDialog({
+                                      title: m.active
+                                        ? "停用学员账号"
+                                        : "恢复学员账号",
+                                      description: `${m.full_name}：停用后无法读取训练资料或操作预约。已有预约仍保留，可由教练处理。`,
+                                      fields: [],
+                                      submit: "确认",
+                                      action: () =>
+                                        mutate("set_member_active", {
+                                          p_id: m.id,
+                                          p_active: !m.active,
+                                        }),
+                                    })
+                                  }
+                                >
+                                  {m.active ? "停用" : "恢复"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      }
+                    </Paginated>
                   </tbody>
                 </table>
               </div>
@@ -2917,59 +2999,69 @@ export default function Studio() {
                 )}
               </div>
               <div className="plan-grid">
-                {ownPlans
-                  .filter(
+                <Paginated
+                  items={ownPlans.filter(
                     (p) =>
                       (filter === "deleted"
                         ? !!p.deleted_at
                         : !p.deleted_at &&
                           (filter === "all" || p.status === filter)) &&
                       (memberFilter === "all" || p.member_id === memberFilter),
-                  )
-                  .map((p) => (
-                    <article className="panel plan-card" key={p.id}>
-                      <div className="row between">
-                        <span className="small-icon">
-                          <Dumbbell />
-                        </span>
-                        <Badge value={p.deleted_at ? "已删除" : p.status} />
-                      </div>
-                      <h2>{p.title}</h2>
-                      <p className="muted">
-                        {name(p.member_id)} ·{" "}
-                        {displayTime(p.created_at, zone, "yyyy.MM.dd")}
-                      </p>
-                      <pre className="plan-content">{p.content}</pre>
-                      <div className="plan-footer">
-                        <span>
-                          <ShieldCheck size={14} />
-                          {p.deleted_at || p.status === "draft"
-                            ? "仅教练可见"
-                            : "专属计划 · 仅指定学员可见"}
-                        </span>
-                        {coach && (
-                          <div className="row gap wrap">
-                            {!p.deleted_at && (
+                  )}
+                  resetKey={[tab, filter, memberFilter, query, current.id]}
+                  label="训练计划"
+                >
+                  {(pageItems, pageOffset) =>
+                    pageItems.map((p) => (
+                      <article className="panel plan-card" key={p.id}>
+                        <div className="row between">
+                          <span className="small-icon">
+                            <Dumbbell />
+                          </span>
+                          <Badge value={p.deleted_at ? "已删除" : p.status} />
+                        </div>
+                        <h2>{p.title}</h2>
+                        <p className="muted">
+                          {name(p.member_id)} ·{" "}
+                          {displayTime(p.created_at, zone, "yyyy.MM.dd")}
+                        </p>
+                        <pre className="plan-content">{p.content}</pre>
+                        <div className="plan-footer">
+                          <span>
+                            <ShieldCheck size={14} />
+                            {p.deleted_at || p.status === "draft"
+                              ? "仅教练可见"
+                              : "专属计划 · 仅指定学员可见"}
+                          </span>
+                          {coach && (
+                            <div className="row gap wrap">
+                              {!p.deleted_at && (
+                                <button
+                                  className="text-btn"
+                                  onClick={() => editPlan(p)}
+                                >
+                                  编辑计划
+                                </button>
+                              )}
                               <button
                                 className="text-btn"
-                                onClick={() => editPlan(p)}
+                                onClick={() =>
+                                  setTrainingDeleted(
+                                    "plan",
+                                    p.id,
+                                    !p.deleted_at,
+                                  )
+                                }
                               >
-                                编辑计划
+                                {p.deleted_at ? "恢复为草稿" : "删除"}
                               </button>
-                            )}
-                            <button
-                              className="text-btn"
-                              onClick={() =>
-                                setTrainingDeleted("plan", p.id, !p.deleted_at)
-                              }
-                            >
-                              {p.deleted_at ? "恢复为草稿" : "删除"}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </article>
-                  ))}
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    ))
+                  }
+                </Paginated>
               </div>
               {!ownPlans.some(
                 (p) =>
@@ -3037,72 +3129,94 @@ export default function Studio() {
                 </div>
               )}
               <div className="records-list">
-                {ownRecords
-                  .filter(
-                    (r) =>
-                      (memberFilter === "all" ||
-                        r.member_id === memberFilter) &&
-                      recordMatchesFilter(r),
-                  )
-                  .sort((a, b) => b.recorded_on.localeCompare(a.recorded_on))
-                  .map((r) => (
-                    <article className="panel record-card" key={r.id}>
-                      <div className="record-side">
-                        <span className="eyebrow">{r.recorded_on}</span>
-                        <h2>{name(r.member_id)}</h2>
-                        <span
-                          className={`badge ${r.shared ? "confirmed" : "draft"}`}
-                        >
-                          {r.deleted_at
-                            ? "已删除"
-                            : r.shared
-                              ? "已发布"
-                              : "草稿 · 仅教练"}
-                        </span>
-                      </div>
-                      <div className="record-body">
-                        <div className="record-metrics">
-                          <div>
-                            <span>体重</span>
-                            <strong>
-                              {r.weight ?? "—"}
-                              <small>kg</small>
-                            </strong>
-                          </div>
-                          <div>
-                            <span>体脂率</span>
-                            <strong>
-                              {r.body_fat ?? "—"}
-                              <small>%</small>
-                            </strong>
-                          </div>
+                <Paginated
+                  items={ownRecords
+                    .filter(
+                      (r) =>
+                        (memberFilter === "all" ||
+                          r.member_id === memberFilter) &&
+                        recordMatchesFilter(r),
+                    )
+                    .sort((a, b) => b.recorded_on.localeCompare(a.recorded_on))}
+                  resetKey={[tab, filter, memberFilter, query, current.id]}
+                  label="训练档案"
+                >
+                  {(pageItems, pageOffset) =>
+                    pageItems.map((r) => (
+                      <article className="panel record-card" key={r.id}>
+                        <div className="record-side">
+                          <span className="eyebrow">{r.recorded_on}</span>
+                          <h2>{name(r.member_id)}</h2>
+                          <span
+                            className={`badge ${r.shared ? "confirmed" : "draft"}`}
+                          >
+                            {r.deleted_at
+                              ? "已删除"
+                              : r.shared
+                                ? "已发布"
+                                : "草稿 · 仅教练"}
+                          </span>
                         </div>
-                        <p className="pre-wrap">
-                          {r.notes || "本次未填写备注。"}
-                        </p>
-                      </div>
-                      {coach && (
-                        <div className="row gap wrap">
-                          {!r.deleted_at && (
+                        <div className="record-body">
+                          <div className="record-metrics">
+                            <div>
+                              <span>体重</span>
+                              <strong>
+                                {kgToLb(r.weight) ?? "—"}
+                                <small>lb</small>
+                              </strong>
+                            </div>
+                            <div>
+                              <span>体脂率</span>
+                              <strong>
+                                {r.body_fat ?? "—"}
+                                <small>%</small>
+                              </strong>
+                            </div>
+                            {measurementFields
+                              .filter((f) => r.measurements?.[f.key] != null)
+                              .map((f) => (
+                                <div key={f.key}>
+                                  <span>{f.label}</span>
+                                  <strong>
+                                    {r.measurements![f.key]}
+                                    <small>{f.unit}</small>
+                                  </strong>
+                                </div>
+                              ))}
+                          </div>
+                          <p className="pre-wrap">
+                            {r.notes || "本次未填写备注。"}
+                          </p>
+                        </div>
+                        {coach && (
+                          <div className="row gap wrap">
+                            {!r.deleted_at && (
+                              <button
+                                className="text-btn"
+                                onClick={() => editRecord(r)}
+                              >
+                                编辑
+                              </button>
+                            )}
                             <button
                               className="text-btn"
-                              onClick={() => editRecord(r)}
+                              onClick={() =>
+                                setTrainingDeleted(
+                                  "record",
+                                  r.id,
+                                  !r.deleted_at,
+                                )
+                              }
                             >
-                              编辑
+                              {r.deleted_at ? "恢复为草稿" : "删除"}
                             </button>
-                          )}
-                          <button
-                            className="text-btn"
-                            onClick={() =>
-                              setTrainingDeleted("record", r.id, !r.deleted_at)
-                            }
-                          >
-                            {r.deleted_at ? "恢复为草稿" : "删除"}
-                          </button>
-                        </div>
-                      )}
-                    </article>
-                  ))}
+                          </div>
+                        )}
+                      </article>
+                    ))
+                  }
+                </Paginated>
               </div>
               {!ownRecords.some(
                 (r) =>
@@ -3205,72 +3319,91 @@ export default function Studio() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.invites.map((i) => (
-                          <tr key={i.id}>
-                            <td>
-                              <button
-                                className="code-btn"
-                                onClick={() => copy(i.code)}
-                              >
-                                <code>{i.code}</code>
-                                <Copy size={13} />
-                              </button>
-                            </td>
-                            <td>{i.email || "不限"}</td>
-                            <td>
-                              {i.uses} / {i.max_uses}
-                            </td>
-                            <td>
-                              {i.expires_at
-                                ? displayTime(i.expires_at, zone, "yyyy.MM.dd")
-                                : "不限"}
-                            </td>
-                            <td>
-                              {!i.active
-                                ? "已停用"
-                                : i.uses >= i.max_uses
-                                  ? "已用完"
-                                  : i.expires_at &&
-                                      new Date(i.expires_at) < new Date()
-                                    ? "已过期"
-                                    : "可使用"}
-                            </td>
-                            <td>
-                              <div className="row gap">
-                                <button
-                                  className="text-btn"
-                                  onClick={() =>
-                                    copy(
-                                      `${window.location.origin}/?invite=${i.code}`,
-                                    )
-                                  }
-                                >
-                                  复制链接
-                                </button>
-                                {i.active && (
+                        <Paginated
+                          items={data.invites}
+                          resetKey={[
+                            tab,
+                            filter,
+                            memberFilter,
+                            query,
+                            current.id,
+                          ]}
+                          label="邀请码"
+                          tableColumns={6}
+                        >
+                          {(pageItems, pageOffset) =>
+                            pageItems.map((i) => (
+                              <tr key={i.id}>
+                                <td>
                                   <button
-                                    className="text-btn muted"
-                                    onClick={() =>
-                                      setDialog({
-                                        title: "停用邀请码",
-                                        description:
-                                          "停用后，新用户无法再使用此邀请码注册。",
-                                        fields: [],
-                                        submit: "停用",
-                                        action: () =>
-                                          mutate("revoke_invite", {
-                                            p_id: i.id,
-                                          }),
-                                      })
-                                    }
+                                    className="code-btn"
+                                    onClick={() => copy(i.code)}
                                   >
-                                    停用
+                                    <code>{i.code}</code>
+                                    <Copy size={13} />
                                   </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                </td>
+                                <td>{i.email || "不限"}</td>
+                                <td>
+                                  {i.uses} / {i.max_uses}
+                                </td>
+                                <td>
+                                  {i.expires_at
+                                    ? displayTime(
+                                        i.expires_at,
+                                        zone,
+                                        "yyyy.MM.dd",
+                                      )
+                                    : "不限"}
+                                </td>
+                                <td>
+                                  {!i.active
+                                    ? "已停用"
+                                    : i.uses >= i.max_uses
+                                      ? "已用完"
+                                      : i.expires_at &&
+                                          new Date(i.expires_at) < new Date()
+                                        ? "已过期"
+                                        : "可使用"}
+                                </td>
+                                <td>
+                                  <div className="row gap">
+                                    <button
+                                      className="text-btn"
+                                      onClick={() =>
+                                        copy(
+                                          `${window.location.origin}/?invite=${i.code}`,
+                                        )
+                                      }
+                                    >
+                                      复制链接
+                                    </button>
+                                    {i.active && (
+                                      <button
+                                        className="text-btn muted"
+                                        onClick={() =>
+                                          setDialog({
+                                            title: "停用邀请码",
+                                            description:
+                                              "停用后，新用户无法再使用此邀请码注册。",
+                                            fields: [],
+                                            submit: "停用",
+                                            action: () =>
+                                              mutate("revoke_invite", {
+                                                p_id: i.id,
+                                              }),
+                                          })
+                                        }
+                                      >
+                                        停用
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          }
+                        </Paginated>
                       </tbody>
                     </table>
                   </div>
@@ -3294,38 +3427,54 @@ export default function Studio() {
                         </tr>
                       </thead>
                       <tbody>
-                        {members.map((m) => {
-                          const rows = data.referrals.filter(
-                            (r) => r.referrer_id === m.id,
-                          );
-                          return (
-                            <tr key={m.id}>
-                              <td>{m.full_name}</td>
-                              <td>
-                                <button
-                                  className="code-btn"
-                                  onClick={() => copy(m.referral_code)}
-                                >
-                                  <code>{m.referral_code}</code>
-                                  <Copy size={13} />
-                                </button>
-                              </td>
-                              <td>{rows.length}</td>
-                              <td>
-                                {
-                                  rows.filter((r) => r.status === "confirmed")
-                                    .length
-                                }
-                              </td>
-                              <td>
-                                {
-                                  rows.filter((r) => r.status === "pending")
-                                    .length
-                                }
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        <Paginated
+                          items={members}
+                          resetKey={[
+                            tab,
+                            filter,
+                            memberFilter,
+                            query,
+                            current.id,
+                          ]}
+                          label="推荐汇总"
+                          tableColumns={5}
+                        >
+                          {(pageItems, pageOffset) =>
+                            pageItems.map((m) => {
+                              const rows = data.referrals.filter(
+                                (r) => r.referrer_id === m.id,
+                              );
+                              return (
+                                <tr key={m.id}>
+                                  <td>{m.full_name}</td>
+                                  <td>
+                                    <button
+                                      className="code-btn"
+                                      onClick={() => copy(m.referral_code)}
+                                    >
+                                      <code>{m.referral_code}</code>
+                                      <Copy size={13} />
+                                    </button>
+                                  </td>
+                                  <td>{rows.length}</td>
+                                  <td>
+                                    {
+                                      rows.filter(
+                                        (r) => r.status === "confirmed",
+                                      ).length
+                                    }
+                                  </td>
+                                  <td>
+                                    {
+                                      rows.filter((r) => r.status === "pending")
+                                        .length
+                                    }
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          }
+                        </Paginated>
                       </tbody>
                     </table>
                   </div>
@@ -3379,46 +3528,59 @@ export default function Studio() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleReferrals
-                        .filter(
+                      <Paginated
+                        items={visibleReferrals.filter(
                           (r) =>
                             (memberFilter === "all" ||
                               r.referrer_id === memberFilter) &&
                             (filter === "all" || r.status === filter),
-                        )
-                        .map((r, i) => (
-                          <tr key={r.id}>
-                            {coach && <td>{name(r.referrer_id)}</td>}
-                            <td>
-                              {coach
-                                ? name(r.referred_id)
-                                : `受邀学员 ${i + 1}`}
-                            </td>
-                            <td>
-                              {displayTime(
-                                r.created_at,
-                                zone,
-                                "yyyy.MM.dd HH:mm",
-                              )}
-                            </td>
-                            <td>
-                              <Badge
-                                value={
-                                  r.status === "pending" ? "待验证" : r.status
-                                }
-                              />
-                            </td>
-                            <td>
-                              {r.confirmed_at
-                                ? displayTime(
-                                    r.confirmed_at,
-                                    zone,
-                                    "yyyy.MM.dd HH:mm",
-                                  )
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
+                        )}
+                        resetKey={[
+                          tab,
+                          filter,
+                          memberFilter,
+                          query,
+                          current.id,
+                        ]}
+                        label="推荐明细"
+                        tableColumns={coach ? 5 : 4}
+                      >
+                        {(pageItems, pageOffset) =>
+                          pageItems.map((r, i) => (
+                            <tr key={r.id}>
+                              {coach && <td>{name(r.referrer_id)}</td>}
+                              <td>
+                                {coach
+                                  ? name(r.referred_id)
+                                  : `受邀学员 ${pageOffset + i + 1}`}
+                              </td>
+                              <td>
+                                {displayTime(
+                                  r.created_at,
+                                  zone,
+                                  "yyyy.MM.dd HH:mm",
+                                )}
+                              </td>
+                              <td>
+                                <Badge
+                                  value={
+                                    r.status === "pending" ? "待验证" : r.status
+                                  }
+                                />
+                              </td>
+                              <td>
+                                {r.confirmed_at
+                                  ? displayTime(
+                                      r.confirmed_at,
+                                      zone,
+                                      "yyyy.MM.dd HH:mm",
+                                    )
+                                  : "—"}
+                              </td>
+                            </tr>
+                          ))
+                        }
+                      </Paginated>
                     </tbody>
                   </table>
                 </div>
@@ -3465,30 +3627,45 @@ export default function Studio() {
                         </tr>
                       </thead>
                       <tbody>
-                        {members.map((m) => {
-                          const p = data.member_prices.find(
-                            (p) => p.member_id === m.id,
-                          );
-                          return (
-                            <tr key={m.id}>
-                              <td>{m.full_name}</td>
-                              <td>
-                                {formatPrice(p?.single_price, p?.currency)}
-                              </td>
-                              <td>
-                                {formatPrice(p?.monthly_price, p?.currency)}
-                              </td>
-                              <td>
-                                <button
-                                  className="text-btn"
-                                  onClick={() => editMemberPrice(m.id)}
-                                >
-                                  设置价格
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        <Paginated
+                          items={members}
+                          resetKey={[
+                            tab,
+                            filter,
+                            memberFilter,
+                            query,
+                            current.id,
+                          ]}
+                          label="专属价格"
+                          tableColumns={4}
+                        >
+                          {(pageItems, pageOffset) =>
+                            pageItems.map((m) => {
+                              const p = data.member_prices.find(
+                                (p) => p.member_id === m.id,
+                              );
+                              return (
+                                <tr key={m.id}>
+                                  <td>{m.full_name}</td>
+                                  <td>
+                                    {formatPrice(p?.single_price, p?.currency)}
+                                  </td>
+                                  <td>
+                                    {formatPrice(p?.monthly_price, p?.currency)}
+                                  </td>
+                                  <td>
+                                    <button
+                                      className="text-btn"
+                                      onClick={() => editMemberPrice(m.id)}
+                                    >
+                                      设置价格
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          }
+                        </Paginated>
                       </tbody>
                     </table>
                   </div>
@@ -3830,35 +4007,54 @@ export default function Studio() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.contact_sync.map((c) => (
-                          <tr key={c.id}>
-                            <td>{name(c.member_id)}</td>
-                            <td>
-                              <Badge
-                                value={c.state}
-                                label={
-                                  (
-                                    {
-                                      pending: "等待自动同步",
-                                      processing: "同步中",
-                                      failed: "同步失败",
-                                      synced: "已同步",
-                                    } as Record<string, string>
-                                  )[c.state]
-                                }
-                              />
-                            </td>
-                            <td>
-                              {c.in_segment ? "已加入" : "未加入 / 已移出"}
-                            </td>
-                            <td>
-                              {c.synced_at
-                                ? displayTime(c.synced_at, zone, "MM.dd HH:mm")
-                                : "—"}
-                            </td>
-                            <td>{c.last_error || "—"}</td>
-                          </tr>
-                        ))}
+                        <Paginated
+                          items={data.contact_sync}
+                          resetKey={[
+                            tab,
+                            filter,
+                            memberFilter,
+                            query,
+                            current.id,
+                          ]}
+                          label="联系人同步"
+                          tableColumns={5}
+                        >
+                          {(pageItems, pageOffset) =>
+                            pageItems.map((c) => (
+                              <tr key={c.id}>
+                                <td>{name(c.member_id)}</td>
+                                <td>
+                                  <Badge
+                                    value={c.state}
+                                    label={
+                                      (
+                                        {
+                                          pending: "等待自动同步",
+                                          processing: "同步中",
+                                          failed: "同步失败",
+                                          synced: "已同步",
+                                        } as Record<string, string>
+                                      )[c.state]
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  {c.in_segment ? "已加入" : "未加入 / 已移出"}
+                                </td>
+                                <td>
+                                  {c.synced_at
+                                    ? displayTime(
+                                        c.synced_at,
+                                        zone,
+                                        "MM.dd HH:mm",
+                                      )
+                                    : "—"}
+                                </td>
+                                <td>{c.last_error || "—"}</td>
+                              </tr>
+                            ))
+                          }
+                        </Paginated>
                       </tbody>
                     </table>
                   </div>
@@ -3927,25 +4123,37 @@ export default function Studio() {
                         </tr>
                       </thead>
                       <tbody>
-                        {[...data.email_jobs]
-                          .sort((a, b) =>
+                        <Paginated
+                          items={[...data.email_jobs].sort((a, b) =>
                             b.created_at.localeCompare(a.created_at),
-                          )
-                          .slice(0, 100)
-                          .map((j) => (
-                            <tr key={j.id}>
-                              <td>{name(j.recipient_id)}</td>
-                              <td>{j.subject}</td>
-                              <td>
-                                {displayTime(j.due_at, zone, "MM.dd HH:mm")}
-                              </td>
-                              <td>
-                                <Badge value={j.state} />
-                              </td>
-                              <td>{j.attempts}</td>
-                              <td>{j.last_error || "—"}</td>
-                            </tr>
-                          ))}
+                          )}
+                          resetKey={[
+                            tab,
+                            filter,
+                            memberFilter,
+                            query,
+                            current.id,
+                          ]}
+                          label="邮件记录"
+                          tableColumns={6}
+                        >
+                          {(pageItems, pageOffset) =>
+                            pageItems.map((j) => (
+                              <tr key={j.id}>
+                                <td>{name(j.recipient_id)}</td>
+                                <td>{j.subject}</td>
+                                <td>
+                                  {displayTime(j.due_at, zone, "MM.dd HH:mm")}
+                                </td>
+                                <td>
+                                  <Badge value={j.state} />
+                                </td>
+                                <td>{j.attempts}</td>
+                                <td>{j.last_error || "—"}</td>
+                              </tr>
+                            ))
+                          }
+                        </Paginated>
                       </tbody>
                     </table>
                   </div>

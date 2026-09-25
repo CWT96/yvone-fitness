@@ -234,5 +234,79 @@ test("content lifecycle, private prices and contact synchronization outbox", asy
       );
     },
   );
+  await t.test(
+    "expanded US records preserve old weights, validate measurements and retain student privacy",
+    async () => {
+      await as(coach, "select set_member_active($1,true)", [a]);
+      const id = (
+        await as(
+          coach,
+          "select save_record($1,current_date,62.5,24,'Old metric record',false)",
+          [a],
+        )
+      ).rows[0].save_record;
+      await db.exec(
+        await readFile(
+          new URL("202609250001_record_measurements.sql", dir),
+          "utf8",
+        ),
+      );
+      const save = (
+        user: string,
+        member: string,
+        weight: number | null,
+        metrics: unknown,
+        publish = false,
+      ) =>
+        as(
+          user,
+          "select save_record_us($1,current_date,$2,24,'Updated record',$3,$4,$5)",
+          [member, weight, publish, JSON.stringify(metrics), id],
+        );
+      const metrics = {
+        height_in: 68,
+        waist_in: 32.5,
+        hips_in: 38,
+        chest_in: 37,
+        arm_in: 12,
+        thigh_in: 22,
+        resting_hr: 65,
+        sleep_hours: 7.5,
+      };
+      await save(coach, a, 137.8, metrics);
+      await save(coach, a, 137.8, metrics);
+      let row = (await as(coach, "select * from records where id=$1", [id]))
+        .rows[0];
+      assert.equal(Number(row.weight), 62.5);
+      assert.deepEqual(row.measurements, metrics);
+      assert.equal(
+        (await as(a, "select * from records where id=$1", [id])).rows.length,
+        0,
+      );
+      await save(coach, a, 150, metrics, true);
+      row = (await as(a, "select * from records where id=$1", [id])).rows[0];
+      assert.equal(Number(row.weight), 68.0388555);
+      assert.deepEqual(row.measurements, metrics);
+      assert.equal(
+        (await as(b, "select * from records where id=$1", [id])).rows.length,
+        0,
+      );
+      await assert.rejects(save(a, a, 150, metrics), /仅教练/);
+      await assert.rejects(save(coach, b, 150, metrics), /归属/);
+      for (const invalid of [
+        { unknown: 1 },
+        { waist_in: -1 },
+        { sleep_hours: 25 },
+        { resting_hr: "bad" },
+        [],
+        null,
+      ])
+        await assert.rejects(save(coach, a, 150, invalid), /测量/);
+      await save(coach, a, null, {}, true);
+      row = (await as(a, "select * from records where id=$1", [id])).rows[0];
+      assert.equal(row.weight, null);
+      assert.deepEqual(row.measurements, {});
+    },
+  );
   await db.close();
 });
