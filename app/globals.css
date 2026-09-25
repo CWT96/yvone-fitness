@@ -2409,3 +2409,74 @@ th,
     justify-content: center;
   }
 }
+.accounts-layout {
+  display: grid;
+  gap: 22px;
+}
+.accounts-panel {
+  padding: 24px;
+}
+.accounts-panel h2 {
+  margin-top: 0;
+}
+.accounts-empty {
+  padding: 20px 24px;
+  color: var(--muted);
+}
+.account-heading,
+.membership-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.account-heading h2 {
+  margin-top: 0;
+}
+.membership-row {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+.membership-row p {
+  margin: 8px 0;
+}
+.membership-row small {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.account-warning {
+  color: #a33d29;
+}
+.account-search {
+  max-width: 300px;
+}
+.account-stats {
+  margin-bottom: 0;
+}
+.account-stats .stat-value {
+  font-size: 30px;
+}
+.account-overview {
+  justify-content: space-between;
+  align-items: center;
+}
+.accounts-layout td:last-child {
+  white-space: pre-wrap;
+  max-width: 450px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .account-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .account-overview {
+    flex-wrap: wrap;
+  }
+  .accounts-panel {
+    padding: 18px;
+  }
+  .account-stats .stat-value {
+    font-size: 25px;
+  }
+}

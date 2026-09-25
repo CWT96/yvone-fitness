@@ -36,6 +36,13 @@ import { configured, supabase } from "@/lib/supabase";
 import { demoData } from "@/lib/demo";
 import { availableBookingSlots, compareBookings } from "@/lib/booking";
 import { bookingMatches, memberNeeds } from "@/lib/workflows";
+import { SessionAccounts } from "@/components/session-accounts";
+import {
+  memberSessionStats,
+  membershipForDate,
+  validateCredit,
+  defaultMonthlyEnd,
+} from "@/lib/session-accounts";
 import {
   fieldLimits,
   initialMember,
@@ -49,6 +56,7 @@ import type {
   Appointment,
   Plan,
   RecordEntry,
+  MonthlyMembership,
 } from "@/lib/types";
 import { displayTime, localToISO, csvCell, scheduleDays } from "@/lib/time";
 import type { Session } from "@supabase/supabase-js";
@@ -80,6 +88,7 @@ const tabs = [
   ["overview", "训练概览", LayoutDashboard],
   ["schedule", "教练时间表", CalendarDays],
   ["bookings", "课程预约", Clock3],
+  ["credits", "课时与统计", Activity],
   ["members", "学员管理", Users],
   ["plans", "训练计划", Dumbbell],
   ["records", "训练档案", FileText],
@@ -135,6 +144,9 @@ const emptyData = (): Data => ({
   packages: [],
   member_prices: [],
   contact_sync: [],
+  session_entries: [],
+  monthly_memberships: [],
+  credits_ready: false,
 });
 function Badge({ value, label }: { value: string; label?: string }) {
   return (
@@ -414,6 +426,23 @@ export default function Studio() {
         from += 500;
       }
     };
+    const readAccounts = async () => {
+      try {
+        const [session_entries, monthly_memberships] = await Promise.all([
+          read("session_entries"),
+          read("monthly_memberships"),
+        ]);
+        return { session_entries, monthly_memberships, credits_ready: true };
+      } catch (e) {
+        if (["42P01", "PGRST205"].includes((e as { code?: string }).code || ""))
+          return {
+            session_entries: [],
+            monthly_memberships: [],
+            credits_ready: false,
+          };
+        throw e;
+      }
+    };
     const [
       profiles,
       slots,
@@ -428,6 +457,7 @@ export default function Studio() {
       member_prices,
       contact_sync,
       settings,
+      accounts,
     ] = await Promise.all([
       read("profiles"),
       supabase.rpc("get_schedule"),
@@ -442,11 +472,13 @@ export default function Studio() {
       read("member_prices"),
       read("contact_sync"),
       read("settings"),
+      readAccounts(),
     ]);
     if (slots.error) throw slots.error;
     if (!isLatest()) return;
     setLoadError("");
     setData({
+      ...accounts,
       profiles,
       slots: slots.data || [],
       appointments,
@@ -622,6 +654,44 @@ export default function Studio() {
       now = new Date().toISOString();
     setData((d) => {
       const n = structuredClone(d);
+      if (
+        fn === "record_session_credit" &&
+        !n.session_entries.some((e) => e.id === a.p_id)
+      )
+        n.session_entries.push({
+          id: String(a.p_id),
+          member_id: String(a.p_member),
+          kind: a.p_kind as "purchase" | "adjustment",
+          quantity: Number(a.p_quantity),
+          note: String(a.p_note),
+          amount: a.p_amount == null ? null : Number(a.p_amount),
+          currency: String(a.p_currency),
+          appointment_id: null,
+          membership_id: null,
+          created_at: now,
+        });
+      if (
+        fn === "record_monthly_membership" &&
+        !n.monthly_memberships.some((m) => m.id === a.p_id)
+      )
+        n.monthly_memberships.push({
+          id: String(a.p_id),
+          member_id: String(a.p_member),
+          starts_on: String(a.p_start),
+          ends_on: String(a.p_end),
+          note: String(a.p_note),
+          amount: a.p_amount == null ? null : Number(a.p_amount),
+          currency: String(a.p_currency),
+          created_at: now,
+          cancelled_at: null,
+          cancel_reason: null,
+        });
+      if (fn === "cancel_monthly_membership")
+        n.monthly_memberships = n.monthly_memberships.map((m) =>
+          m.id === a.p_id
+            ? { ...m, cancelled_at: now, cancel_reason: String(a.p_reason) }
+            : m,
+        );
       if (fn === "save_profile")
         Object.assign(
           n.profiles.find((p) => p.id === current!.id)!,
@@ -694,7 +764,31 @@ export default function Studio() {
             booking.status = "cancelled";
             if (old) old.available = true;
           }
-          if (a.p_action === "complete") booking.status = "completed";
+          if (a.p_action === "complete" && booking.status === "booked") {
+            booking.status = "completed";
+            const monthly = membershipForDate(
+              n.monthly_memberships,
+              booking.member_id,
+              displayTime(booking.slots.starts_at, zone, "yyyy-MM-dd"),
+            );
+            if (
+              !n.session_entries.some((e) => e.appointment_id === booking!.id)
+            )
+              n.session_entries.push({
+                id,
+                member_id: booking.member_id,
+                kind: monthly ? "monthly_lesson" : "lesson",
+                quantity: monthly ? 0 : -1,
+                note: monthly
+                  ? "包月内完成课程，不扣按次课时"
+                  : "完成课程，扣除 1 节",
+                amount: null,
+                currency: "USD",
+                appointment_id: booking.id,
+                membership_id: monthly?.id || null,
+                created_at: now,
+              });
+          }
           if (a.p_action === "reschedule" && slot) {
             if (old) old.available = true;
             slot.available = false;
@@ -1037,6 +1131,158 @@ export default function Studio() {
           p_kind: kind,
           p_id: id,
           p_deleted: deleted,
+        }),
+    });
+  }
+  function creditFields(memberId: string): Field[] {
+    return [
+      {
+        name: "p_amount",
+        label: "本次金额记录（选填，不会发起扣款）",
+        type: "number",
+        min: 0,
+        max: 999999.99,
+        step: 0.01,
+      },
+      {
+        name: "p_currency",
+        label: "币种",
+        type: "select",
+        required: true,
+        value:
+          data.member_prices.find((p) => p.member_id === memberId)?.currency ||
+          "USD",
+        options: ["USD", "CNY", "CAD", "AUD", "EUR", "GBP"].map((v) => ({
+          value: v,
+          label: v,
+        })),
+      },
+    ];
+  }
+  function recordCredit(memberId: string, adjustment = false) {
+    const request = crypto.randomUUID();
+    setDialog({
+      title: `${adjustment ? "调整课时" : "录入购课"} · ${name(memberId)}`,
+      description: adjustment
+        ? "期初余课、补课、退课或纠错请在这里录入。正数增加，负数扣减；必须说明原因，学员可以查看。不改动历史上课次数。"
+        : "录入本次购买的课次数量，例如 3 节。只做课时与金额记录，不会发起支付；旧课程不会补扣。",
+      fields: [
+        {
+          name: "p_quantity",
+          label: adjustment ? "课时增减（如 +2 或 -1）" : "购买课次数",
+          type: "number",
+          required: true,
+          min: adjustment ? -10000 : 1,
+          max: 10000,
+          step: 1,
+          value: adjustment ? "" : 1,
+        },
+        ...(!adjustment ? creditFields(memberId) : []),
+        {
+          name: "p_note",
+          label: "说明 / 原因（学员可见）",
+          type: "textarea",
+          required: true,
+        },
+      ],
+      submit: adjustment ? "确认调整" : "确认入账",
+      success: "课时已入账，可在流水中查看",
+      action: async (v) => {
+        validateCredit(
+          Number(v.p_quantity),
+          adjustment ? "adjustment" : "purchase",
+          v.p_note,
+        );
+        await mutate("record_session_credit", {
+          p_id: request,
+          p_member: memberId,
+          p_kind: adjustment ? "adjustment" : "purchase",
+          p_quantity: Number(v.p_quantity),
+          p_note: v.p_note,
+          p_amount: v.p_amount ? Number(v.p_amount) : null,
+          p_currency: v.p_currency || "USD",
+        });
+      },
+    });
+  }
+  function recordMonthly(memberId: string) {
+    const request = crypto.randomUUID();
+    const start = displayTime(new Date().toISOString(), zone, "yyyy-MM-dd");
+    setDialog({
+      title: `录入包月 · ${name(memberId)}`,
+      description: `按 ${zone} 记录有效期，含开始和结束日。有效期内不限次数；以后确认完成的课程按上课日期判断是否属于包月。不会回改已经扣课的流水，如有误请另作课时调整。不会发起支付。`,
+      fields: [
+        {
+          name: "p_start",
+          label: "开始日期",
+          type: "date",
+          required: true,
+          value: start,
+        },
+        {
+          name: "p_end",
+          label: "结束日期（含当天）",
+          type: "date",
+          required: true,
+          value: defaultMonthlyEnd(start),
+        },
+        ...creditFields(memberId),
+        {
+          name: "p_note",
+          label: "包月说明（学员可见）",
+          type: "textarea",
+          required: true,
+        },
+      ],
+      submit: "确认录入包月",
+      success: "包月已录入",
+      action: async (v) => {
+        if (
+          !v.p_start ||
+          !v.p_end ||
+          v.p_end < v.p_start ||
+          (Date.parse(v.p_end) - Date.parse(v.p_start)) / 86400000 > 366
+        )
+          throw new Error("请选择有效日期，最长 366 天");
+        if (
+          data.monthly_memberships.some(
+            (m) =>
+              m.member_id === memberId &&
+              !m.cancelled_at &&
+              m.starts_on <= v.p_end &&
+              m.ends_on >= v.p_start,
+          )
+        )
+          throw new Error("有效期与已有包月重叠，请核对日期");
+        await mutate("record_monthly_membership", {
+          p_id: request,
+          p_member: memberId,
+          p_start: v.p_start,
+          p_end: v.p_end,
+          p_note: v.p_note,
+          p_amount: v.p_amount ? Number(v.p_amount) : null,
+          p_currency: v.p_currency,
+        });
+      },
+    });
+  }
+  function cancelMonthly(m: MonthlyMembership) {
+    setDialog({
+      title: `作废包月 · ${name(m.member_id)}`,
+      description: `${m.starts_on} 至 ${m.ends_on}。作废后保留原始记录，不再覆盖之后确认完成的课程，也不会重算已完成课程或自动退款。录错可作废后重新录入。`,
+      fields: [
+        {
+          name: "p_reason",
+          label: "作废原因（学员可见）",
+          type: "textarea",
+          required: true,
+        },
+      ],
+      submit: "确认作废",
+      action: (v) =>
+        mutate("cancel_monthly_membership", {
+          p_id: m.id,
+          p_reason: v.p_reason,
         }),
     });
   }
@@ -1628,7 +1874,7 @@ export default function Studio() {
                     onClick={() =>
                       setDialog({
                         title: "确认课程完成",
-                        description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}`,
+                        description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? "此课程在包月有效期内，确认后记录上课次数，不扣按次课时。" : `确认后扣除 1 节按次课时，预计余额 ${memberSessionStats(data, b.member_id).balance - 1} 节。余额不足也会记录完成，请核对是否遗漏购课。`) : "课时账户尚未启用，本次仅记录课程完成。"}`,
                         fields: [],
                         submit: "标记完成",
                         action: () =>
@@ -1842,6 +2088,9 @@ export default function Studio() {
                         : "你的下一次训练、专属计划和每一点进步。",
                       schedule: "找到合适的时间，为下一次进步留出位置。",
                       bookings: "查看课程安排，轻松处理预约与变更。",
+                      credits: coach
+                        ? "掌握每位学员的余课、包月期限和上课历史。"
+                        : "查看剩余课时、上课统计及每笔增减明细。",
                       members: "了解每一位学员，让训练更有针对性。",
                       plans: "有方向地练习，有节奏地进步。",
                       records: "记录身体变化，也记录每一步成长。",
@@ -1900,6 +2149,31 @@ export default function Studio() {
           </div>
           {tab === "overview" && (
             <>
+              <div className="account-overview notice">
+                <div>
+                  <strong>
+                    {coach
+                      ? "课时账户与上课统计"
+                      : data.credits_ready
+                        ? `剩余按次课时：${memberSessionStats(data, current.id).balance} 节`
+                        : "课时账户待启用"}
+                  </strong>
+                  <p>
+                    {coach
+                      ? "录入购课、查看余课和历史；已预约与已扣课分开计算。"
+                      : data.credits_ready &&
+                          memberSessionStats(data, current.id).membership
+                        ? `包月有效至 ${memberSessionStats(data, current.id).membership!.ends_on}，有效期内不限次数。`
+                        : "确认完成课程后扣课，预约和改期不提前扣除。"}
+                  </p>
+                </div>
+                <button
+                  className="btn secondary small"
+                  onClick={() => navigate("credits")}
+                >
+                  {coach ? "管理课时" : "查看课时明细"}
+                </button>
+              </div>
               {coach && (
                 <section className="work-queue" aria-label="待办事项">
                   <button onClick={() => openBookings("pending")}>
@@ -2511,6 +2785,15 @@ export default function Studio() {
                         </td>
                         <td>
                           <div className="row wrap gap">
+                            <button
+                              className="text-btn"
+                              onClick={() => {
+                                navigate("credits");
+                                setMemberFilter(m.id);
+                              }}
+                            >
+                              课时
+                            </button>
                             {m.active && (
                               <button
                                 className="text-btn"
@@ -3144,6 +3427,17 @@ export default function Studio() {
                 )}
               </section>
             </>
+          )}
+          {tab === "credits" && (
+            <SessionAccounts
+              data={data}
+              coach={coach}
+              memberId={coach ? memberFilter : current.id}
+              onSelect={setMemberFilter}
+              onCredit={recordCredit}
+              onMonthly={recordMonthly}
+              onCancelMonthly={cancelMonthly}
+            />
           )}
           {tab === "packages" && (
             <>

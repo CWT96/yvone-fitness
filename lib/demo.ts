@@ -39,6 +39,33 @@ export function demoData(): Data {
     available: ![0, 3, 6].includes(i),
   }));
   return {
+    credits_ready: true,
+    session_entries: [0, 1].map((i) => ({
+      id: `credit-${i}`,
+      member_id: `member-${i}`,
+      kind: "purchase" as const,
+      quantity: 3,
+      note: "示例：购买 3 节训练",
+      amount: i === 0 ? 270 : 300,
+      currency: "USD",
+      appointment_id: null,
+      membership_id: null,
+      created_at: future(-5, 0),
+    })),
+    monthly_memberships: [
+      {
+        id: "monthly-2",
+        member_id: "member-2",
+        starts_on: future(-3, 0).slice(0, 10),
+        ends_on: future(27, 0).slice(0, 10),
+        amount: 700,
+        currency: "USD",
+        note: "示例包月，不限次数",
+        created_at: future(-3, 0),
+        cancelled_at: null,
+        cancel_reason: null,
+      },
+    ],
     contact_sync: [],
     member_prices: [
       {

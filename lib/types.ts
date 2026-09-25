@@ -117,6 +117,9 @@ export type ContactSync = {
   in_segment: boolean;
 };
 export type Data = {
+  session_entries: SessionEntry[];
+  monthly_memberships: MonthlyMembership[];
+  credits_ready: boolean;
   member_prices: MemberPrice[];
   contact_sync: ContactSync[];
   profiles: Profile[];
@@ -130,4 +133,28 @@ export type Data = {
   email_jobs: EmailJob[];
   packages: Package[];
   settings: Settings;
+};
+export type SessionEntry = {
+  id: string;
+  member_id: string;
+  kind: "purchase" | "adjustment" | "lesson" | "monthly_lesson";
+  quantity: number;
+  note: string;
+  amount: number | null;
+  currency: string;
+  appointment_id: string | null;
+  membership_id: string | null;
+  created_at: string;
+};
+export type MonthlyMembership = {
+  id: string;
+  member_id: string;
+  starts_on: string;
+  ends_on: string;
+  note: string;
+  amount: number | null;
+  currency: string;
+  created_at: string;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
 };
