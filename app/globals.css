@@ -2542,3 +2542,10 @@ th,
     font-size: 23px;
   }
 }
+
+.payments-layout { display: grid; gap: 24px; }
+.payments-layout > label { display: grid; gap: 8px; max-width: 360px; }
+.package-card label { display: grid; gap: 8px; margin: 16px 0; }
+.package-card input { width: 100%; padding: 10px; border: 1px solid #dce1d6; border-radius: 8px; }
+.payment-error { color: #9a3c32; padding: 14px; background: #f9ece8; border-radius: 10px; }
+.payment-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 20px; flex-wrap: wrap; }

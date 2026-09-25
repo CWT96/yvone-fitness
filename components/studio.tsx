@@ -1,4 +1,5 @@
 "use client";
+import { Payments } from "@/components/payments";
 import { Paginated } from "@/components/paginated";
 import {
   kgToLb,
@@ -441,6 +442,10 @@ export default function Studio() {
       p.id ===
       (demo ? (demoRole === "coach" ? "coach" : "member-0") : session?.user.id),
   );
+  useEffect(() => {
+    if (current && new URLSearchParams(window.location.search).has("payment"))
+      setTab("packages");
+  }, [current]);
   const coach = current?.role === "coach";
   const zone = data.settings.timezone;
   const members = data.profiles.filter((p) => p.role === "member");
@@ -3677,7 +3682,7 @@ export default function Studio() {
                     {coach ? "按学员设置专属价格" : "你的专属课程方案"}
                   </strong>
                   <p>
-                    单次训练与不限次数包月。金额只对本人和教练可见，在线支付尚未开放。
+                    单次训练与不限次数包月。金额只对本人和教练可见；包月到期后手动购买，不自动续费。
                   </p>
                 </div>
               </div>
@@ -3740,46 +3745,14 @@ export default function Studio() {
                     <Empty text="学员注册后，可在这里分别设置价格" />
                   )}
                 </section>
-              ) : (
-                <div className="package-grid">
-                  {[
-                    {
-                      title: "单次训练",
-                      key: "single_price" as const,
-                      unit: "次",
-                      description: "一次专属私教训练",
-                    },
-                    {
-                      title: "不限次数包月",
-                      key: "monthly_price" as const,
-                      unit: "月",
-                      description: "包月内不限训练次数，仍需预约教练开放的时段",
-                    },
-                  ].map((plan) => {
-                    const p = data.member_prices.find(
-                      (p) => p.member_id === current.id,
-                    );
-                    return (
-                      <article key={plan.key} className="package-card">
-                        <h2>{plan.title}</h2>
-                        <p>{plan.description}</p>
-                        <div className="price">
-                          {formatPrice(p?.[plan.key], p?.currency)}
-                          <small> / {plan.unit}</small>
-                        </div>
-                        <p>
-                          {p?.[plan.key] == null
-                            ? "教练会为你单独设置金额，请联系教练。"
-                            : "这是教练为你设置的专属金额。"}
-                        </p>
-                        <button className="btn full" disabled>
-                          在线支付尚未开放
-                        </button>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
+              ) : null}
+              <Payments
+                key={current.id}
+                data={data}
+                current={current}
+                demo={demo}
+                onRefresh={load}
+              />
             </>
           )}
           {tab === "settings" && (
