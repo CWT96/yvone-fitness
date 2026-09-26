@@ -58,9 +58,12 @@ export function MemberDashboard({
         }).format(v);
   return (
     <div className="member-dashboard">
-      <section className="panel">
+      <section className="panel member-hero">
         <div className="section-head">
           <div>
+            <span className="member-avatar" aria-hidden="true">
+              {m.full_name.slice(0, 1)}
+            </span>
             <h2>{m.full_name}</h2>
             <p>
               {m.active ? "在训" : "已停用"} · 加入于{" "}
@@ -74,7 +77,10 @@ export function MemberDashboard({
         <p>
           {m.email} · {m.phone || "未填写电话"}
         </p>
-        <p>训练目标：{m.goals || "尚未填写"}</p>
+        <p className="member-goal">
+          <span>训练目标</span>
+          {m.goals || "尚未填写"}
+        </p>
         <div className="row wrap gap">
           <button className="btn" disabled={!m.active} onClick={onBook}>
             为学员预约
@@ -104,13 +110,9 @@ export function MemberDashboard({
             "剩余按次课时",
             data.credits_ready ? `${stats.balance} 节` : "未启用",
           ],
-          ["累计购课", `${stats.purchased} 节`],
           ["已完成训练", `${stats.completed} 次`],
           ["累计训练", `${stats.hours.toFixed(1)} 小时`],
-          ["本月完成", `${stats.thisMonth} 次`],
-          ["未到场", `${stats.noShows} 次`],
           ["接下来课程", `${stats.upcoming} 次`],
-          ["待标记结果", `${pending.length} 次`],
         ].map(([label, value]) => (
           <div className="panel" key={label}>
             <small>{label}</small>
@@ -119,7 +121,26 @@ export function MemberDashboard({
         ))}
       </div>
       <section className="panel">
-        <h2>当前状态</h2>
+        <div className="section-head">
+          <h2>账户与训练状态</h2>
+          <button className="text-btn" onClick={() => onOpen("credits")}>
+            查看明细 →
+          </button>
+        </div>
+        <div className="member-detail-stats">
+          <span>
+            累计购课 <strong>{stats.purchased} 节</strong>
+          </span>
+          <span>
+            本月完成 <strong>{stats.thisMonth} 次</strong>
+          </span>
+          <span>
+            未到场 <strong>{stats.noShows} 次</strong>
+          </span>
+          <span>
+            待标记 <strong>{pending.length} 次</strong>
+          </span>
+        </div>
         <p>
           {stats.membership
             ? `包月有效：${stats.membership.starts_on} 至 ${stats.membership.ends_on}（含结束日）`
@@ -195,7 +216,11 @@ export function MemberDashboard({
         </section>
       </div>
       <section className="panel">
-        <h2>待标记课程结果</h2>
+        <div className="section-head">
+          <h2>
+            待标记课程结果 <span className="count">{pending.length}</span>
+          </h2>
+        </div>
         <p>
           结束后选择「标记完成」或「No show」。按次各扣 1 节；包月内只记结果。
         </p>

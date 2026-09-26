@@ -2550,9 +2550,45 @@ th,
 .payment-error { color: #9a3c32; padding: 14px; background: #f9ece8; border-radius: 10px; }
 .payment-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 20px; flex-wrap: wrap; }
 
-.member-dashboard { display: grid; gap: 20px; }
-.member-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
-.member-metrics .panel { padding: 20px; }
-.member-content { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.member-content .pre-wrap { max-height: 340px; overflow: auto; overflow-wrap: anywhere; }
-@media(max-width:700px) { .member-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .member-content { grid-template-columns: 1fr; } }
+/* Member detail uses contained spacing, with four primary statistics. */
+.member-dashboard { display:grid; gap:22px; min-width:0; }
+.member-dashboard > .panel, .member-content > .panel { padding:26px; }
+.member-dashboard .section-head { padding:0 0 18px; align-items:flex-start; }
+.member-dashboard h2 { font-size:18px; margin:0; line-height:1.4; }
+.member-dashboard h3 { margin:0 0 14px; font-size:17px; }
+.member-dashboard p { line-height:1.8; margin:0 0 12px; overflow-wrap:anywhere; }
+.member-dashboard p:last-child { margin-bottom:0; }
+.member-hero { border-top:4px solid var(--green); }
+.member-hero .section-head > div { position:relative; padding-left:68px; min-height:52px; }
+.member-hero .section-head h2 { font-size:26px; }
+.member-avatar { position:absolute; left:0; top:0; width:50px; height:50px; display:grid; place-items:center; border-radius:16px; background:#eaf0e5; color:var(--green); font-size:23px; }
+.member-hero > p { color:var(--muted); font-size:13px; }
+.member-goal { background:#f6f8f3; border-radius:10px; padding:12px 16px; color:var(--ink)!important; }
+.member-goal span { display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
+.member-hero .row { margin-top:20px; }
+.member-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+.member-metrics .panel { padding:22px; }
+.member-metrics .panel:first-child { background:var(--green); color:white; border-color:var(--green); }
+.member-metrics small { font-size:12px; opacity:.75; }
+.member-metrics h2 { font-size:28px; margin:12px 0 0; font-weight:600; letter-spacing:-.6px; }
+.member-detail-stats { display:flex; flex-wrap:wrap; gap:10px 24px; border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:18px; }
+.member-detail-stats span { color:var(--muted); font-size:13px; }
+.member-detail-stats strong { color:var(--ink); margin-left:6px; }
+.member-content { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:22px; align-items:start; }
+.member-content .pre-wrap { max-height:300px; overflow:auto; overflow-wrap:anywhere; background:#f6f8f5; border-radius:10px; padding:16px; font-size:13px; line-height:1.9; }
+.member-dashboard .booking-list { padding:0; }
+.member-dashboard .empty-state { padding:22px; }
+.slot-create-option { width:100%; display:block; text-align:left; margin:0 0 10px; padding:16px; border:1px dashed #74926a; border-radius:10px; background:#f3f8ec; color:var(--green); font-weight:600; }
+.slot-create-option:hover { background:#e8f2dc; }
+.policy-jump { color:var(--green); font-size:13px; text-underline-offset:4px; }
+.course-policy { padding:28px; scroll-margin-top:24px; }
+.policy-heading h2 { margin:0 0 8px; font-size:22px; }
+.policy-heading > p { color:var(--muted); font-size:13px; margin:0 0 24px; }
+.policy-sections { display:grid; gap:22px; }
+.policy-sections article { display:flex; gap:16px; }
+.policy-number { width:32px; height:32px; flex-shrink:0; display:grid; place-items:center; background:#edf3e6; border-radius:9px; font-size:12px; color:var(--green); }
+.policy-sections h3 { margin:3px 0 8px; font-size:15px; }
+.policy-sections p { margin:0; font-size:13px; line-height:1.9; color:#53665c; }
+.policy-closing { border-top:1px solid var(--line); padding-top:20px; margin:24px 0 0; font-size:13px; line-height:1.8; }
+@media(max-width:800px) { .member-content { grid-template-columns:1fr; } .member-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:520px) { .member-dashboard > .panel,.member-content > .panel,.course-policy { padding:18px; } .member-metrics .panel { padding:18px; } .member-metrics h2 { font-size:24px; } .member-hero .row .btn { flex:1 1 40%; } .member-hero .section-head { flex-wrap:wrap; } .member-dashboard .booking-row { flex-wrap:wrap; } .member-dashboard .booking-actions { width:100%; flex-wrap:wrap; } }

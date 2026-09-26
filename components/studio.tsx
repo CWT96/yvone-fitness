@@ -1,6 +1,7 @@
 "use client";
 import { useStudioNavigation } from "@/lib/studio-navigation";
 import { MemberDashboard } from "@/components/member-dashboard";
+import { changeReminder, attendanceReminder } from "@/lib/course-policy";
 import { Payments } from "@/components/payments";
 import { Paginated } from "@/components/paginated";
 import {
@@ -243,23 +244,6 @@ function DialogView({
           {error}
         </p>
       )}
-      {dialog.alternate && (
-        <button
-          type="button"
-          className="btn secondary"
-          disabled={busy}
-          onClick={() => {
-            const form = ref.current?.querySelector("form");
-            dialog.alternate?.action(
-              form
-                ? String(new FormData(form).get("p_member") || "")
-                : undefined,
-            );
-          }}
-        >
-          {dialog.alternate.label}
-        </button>
-      )}
       <form onSubmit={onSubmit}>
         {dialog.fields.map((f) =>
           f.type === "slots" ? (
@@ -268,6 +252,23 @@ function DialogView({
                 {f.label}
                 {f.required && " *"}
               </legend>
+              {dialog.alternate && (
+                <button
+                  type="button"
+                  className="slot-create-option"
+                  disabled={busy}
+                  onClick={() => {
+                    const form = ref.current?.querySelector("form");
+                    dialog.alternate?.action(
+                      form
+                        ? String(new FormData(form).get("p_member") || "")
+                        : undefined,
+                    );
+                  }}
+                >
+                  {dialog.alternate.label}
+                </button>
+              )}
               {f.options?.length ? (
                 <div className="slot-choice-list">
                   {f.options.map((o) => (
@@ -1059,7 +1060,7 @@ export default function Studio() {
           : coach
             ? "为学员预约"
             : "预约下一次训练",
-        description: `${existing ? `当前预约：${displayTime(existing.slots.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(existing.slots.ends_at, zone, "HH:mm")}。请选择新的训练时间。` : "请选择训练时间。"} 所有课程时间均为 ${zone}。`,
+        description: `${existing ? `当前预约：${displayTime(existing.slots.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(existing.slots.ends_at, zone, "HH:mm")}。请选择新的训练时间。` : "请选择训练时间。"} 所有课程时间均为 ${zone}。${!coach ? `\n${changeReminder}${existing ? "" : `\n${attendanceReminder}`}` : ""}`,
         fields: [
           ...(coach && !existing ? [memberField(member)] : []),
           {
@@ -1069,7 +1070,9 @@ export default function Studio() {
             required: true,
             value: existing ? "" : slot?.id || "",
             hint: coach
-              ? "暂无其他可预约时段。请先返回「教练时间表」开放新的时段，再来预约或改期。"
+              ? existing
+                ? "暂无其他可预约时段，请先在教练时间表添加时间。"
+                : "暂无已开放时段，可点击上方选项直接新增时间并预约。"
               : "教练暂未开放其他可预约时段。请联系教练增加时间后重试；当前预约保持不变。",
             options: available.map((s) => ({
               value: s.id,
@@ -1110,7 +1113,7 @@ export default function Studio() {
   function cancelBooking(b: Appointment) {
     setDialog({
       title: "取消这次预约",
-      description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。取消后，这个时间将重新开放。`,
+      description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。取消后，这个时间将重新开放。${!coach ? `\n${changeReminder}` : ""}`,
       fields: [
         { name: "p_message", label: "取消原因（选填）", type: "textarea" },
       ],
@@ -3183,9 +3186,11 @@ export default function Studio() {
           )}
           {tab === "plans" && (
             <>
-              <p className="reload-notice">
-                发布同一学员的新计划后，原当前计划自动转为历史计划。不会因时间自动过期；草稿仅教练可见。
-              </p>
+              {coach && (
+                <p className="reload-notice">
+                  发布同一学员的新计划后，原当前计划自动转为历史计划。不会因时间自动过期；草稿仅教练可见。
+                </p>
+              )}
               <div className="toolbar outside">
                 <div className="segmented">
                   {[

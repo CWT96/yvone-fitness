@@ -1,4 +1,5 @@
 "use client";
+import { CoursePolicy } from "@/components/course-policy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Data, Profile } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -153,6 +154,9 @@ export function Payments({
   );
   return (
     <section className="payments-layout">
+      <a className="policy-jump" href="#course-policy">
+        购课须知：有效期 · 请假改期 · 迟到与缺席 ↓
+      </a>
       {hint && (
         <div className="notice">
           <p>{hint}</p>
@@ -294,7 +298,7 @@ export function Payments({
                 <small>
                   {unit === 0
                     ? "免费课程请联系教练入账。"
-                    : "金额只对你和教练可见。"}
+                    : "金额只对你和教练可见。购买前请阅读本页购课须知，并在套餐有效期内安排训练。"}
                 </small>
               </article>
             );
@@ -447,6 +451,7 @@ export function Payments({
           </nav>
         )}
       </section>
+      <CoursePolicy />
     </section>
   );
 }

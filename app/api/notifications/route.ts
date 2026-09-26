@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "node:crypto";
 import { syncContacts } from "@/lib/contact-sync";
+import { emailPolicyReminder } from "@/lib/course-policy";
 import { emailContent } from "@/lib/email";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -88,7 +89,7 @@ async function processJobs(request: Request) {
       if (liveError) throw liveError;
       const { data: recipient, error: recipientError } = await db
         .from("profiles")
-        .select("email,full_name,email_notifications,active")
+        .select("email,full_name,email_notifications,active,role")
         .eq("id", job.recipient_id)
         .single();
       if (recipientError) throw recipientError;
@@ -142,11 +143,14 @@ async function processJobs(request: Request) {
           from,
           to: [recipient.email],
           subject: job.subject,
-          text: `${recipient.full_name}，你好：\n${job.body}\n${siteUrl.origin}\n可在个人设置中关闭提醒。`,
+          text: `${recipient.full_name}，你好：\n${job.body}${recipient.role === "member" && emailPolicyReminder(job.subject) ? `\n\n温馨提醒：${emailPolicyReminder(job.subject)}\n完整购课须知：${siteUrl.origin}/?page=packages#course-policy` : ""}\n${siteUrl.origin}\n可在个人设置中关闭提醒。`,
           html: emailContent(
             recipient.full_name,
             job.subject,
-            job.body,
+            job.body +
+              (recipient.role === "member" && emailPolicyReminder(job.subject)
+                ? `\n\n温馨提醒：${emailPolicyReminder(job.subject)}\n完整购课须知请在网站「购买课程」查看。`
+                : ""),
             siteUrl.origin,
             settings?.studio_name || "Yvone Fitness",
           ),
