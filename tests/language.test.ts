@@ -98,6 +98,7 @@ test("all localized UI messages have English translations and matching placehold
     "components/paginated.tsx",
     "components/course-policy.tsx",
     "app/auth/callback/page.tsx",
+    "app/auth/verify/page.tsx",
   ]) {
     const source = ts.createSourceFile(
       file,

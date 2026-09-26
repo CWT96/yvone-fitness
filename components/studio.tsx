@@ -1,4 +1,5 @@
 "use client";
+import { rememberVerificationEmail } from "@/lib/email-verification";
 import { LanguageSelect, useLanguage } from "@/components/language-provider";
 
 import { useStudioNavigation } from "@/lib/studio-navigation";
@@ -1846,9 +1847,10 @@ export default function Studio() {
           },
         });
         if (error) throw error;
+        rememberVerificationEmail(email);
         setAuthHint(
           t(
-            "请查收验证邮件，并在发起注册的同一个浏览器中打开链接。如果没有收到，请检查垃圾邮件或联系教练确认邀请码。",
+            "验证邮件已发送。如邮件包含验证码，请点击下方入口输入；若收到旧版链接，仍可使用原链接验证。",
           ),
         );
       }
@@ -1865,9 +1867,10 @@ export default function Studio() {
           redirectTo: `${window.location.origin}/auth/callback?next=recovery`,
         });
         if (error) throw error;
+        rememberVerificationEmail(email);
         setAuthHint(
           t(
-            "如果该邮箱已注册，你会收到密码重置邮件。请在当前浏览器中打开邮件链接。",
+            "如果该邮箱已注册，你会收到密码重置邮件。请在下方输入邮件验证码；旧版链接仍可在当前浏览器打开。",
           ),
         );
       }
@@ -2073,6 +2076,18 @@ export default function Studio() {
               </button>
             </form>
             {authHint && <p className="success-box">{t(authHint)}</p>}
+            {authMode !== "password" && (
+              <a
+                className="btn secondary full verification-entry"
+                href={
+                  authMode === "reset"
+                    ? "/auth/verify?type=recovery"
+                    : "/auth/verify?type=signup"
+                }
+              >
+                {t("已有邮件验证码？前往验证")}
+              </a>
+            )}
             <div className="auth-links">
               <button
                 disabled={busy}
@@ -4293,7 +4308,7 @@ export default function Studio() {
                         ],
                         submit: t("发送验证邮件"),
                         success: t(
-                          "请检查新旧邮箱中的验证邮件，并在当前浏览器完成验证。",
+                          "请检查新旧邮箱中的邮件，并点击设置中的「输入邮箱验证码」完成验证。旧版邮件链接仍可使用。",
                         ),
                         action: async (v) => {
                           if (demo)
@@ -4305,12 +4320,16 @@ export default function Studio() {
                             },
                           );
                           if (error) throw error;
+                          rememberVerificationEmail(v.email);
                         },
                       })
                     }
                   >
                     {t("修改邮箱")}
                   </button>
+                  <a className="text-btn" href="/auth/verify?type=email_change">
+                    {t("输入邮箱验证码")}
+                  </a>
                   <button
                     className="text-btn"
                     onClick={() =>

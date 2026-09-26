@@ -47,6 +47,9 @@ export default function Callback() {
       {error && (
         <>
           <p>{t(error)}</p>
+          <a className="btn secondary" href="/auth/verify">
+            {t("改用邮件验证码")}
+          </a>
           <a className="btn" href="/">
             {t("返回登录")}
           </a>
