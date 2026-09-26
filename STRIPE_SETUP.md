@@ -19,4 +19,4 @@ User selected manual monthly renewal. Checkout always uses payment mode, never s
 Validation: 87 tests passed, production build passed, local student purchase UI verified.
 Migration 202609250003_stripe_payments.sql applied to zhyxlzalrpwfsqpxfftt.
 Restricted sandbox Checkout key saved to Vercel. User confirmed event destination and STRIPE_WEBHOOK_SECRET / STRIPE_MODE=test configured.
-Pending: deploy payment implementation and exercise actual Stripe test Checkout, then separately enable live keys after live account verification.
+Payment implementation deployed; user confirmed successful sandbox Checkout and subsequent manual acceptance. Keep STRIPE_MODE=test. Live collection is the final step and requires explicit user confirmation after remaining UX acceptance.

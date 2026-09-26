@@ -92,6 +92,80 @@ test("one-time payments: private quotes, idempotent fulfillment, sandbox isolati
     ]);
   let order: any;
   await t.test(
+    "referral signup name remains private and stable; direct scheduling is atomic and coach-only",
+    async () => {
+      const D = "00000000-0000-4000-8000-000000000054";
+      const code = (
+        await db.query<{ referral_code: string }>(
+          "select referral_code from profiles where id=$1",
+          [A],
+        )
+      ).rows[0].referral_code;
+      await db.query(
+        "insert into auth.users(id,email,raw_user_meta_data) values($1,'signup@example.test',$2)",
+        [
+          D,
+          JSON.stringify({
+            full_name: "Original signup name",
+            invite_code: code,
+          }),
+        ],
+      );
+      await db.query(
+        "update profiles set full_name='Changed name' where id=$1",
+        [D],
+      );
+      assert.equal(
+        (
+          await as(
+            "authenticated",
+            A,
+            "select referred_name from referrals where referred_id=$1",
+            [D],
+          )
+        ).rows[0].referred_name,
+        "Original signup name",
+      );
+      assert.equal(
+        (
+          await as(
+            "authenticated",
+            B,
+            "select * from referrals where referred_id=$1",
+            [D],
+          )
+        ).rows.length,
+        0,
+      );
+      assert.equal(
+        (
+          await as("authenticated", A, "select * from profiles where id=$1", [
+            D,
+          ])
+        ).rows.length,
+        0,
+      );
+      const sql =
+        "select book_new_slot($1,now()+interval '10 days',now()+interval '10 days 1 hour','Test booking') as id";
+      await assert.rejects(as("authenticated", A, sql, [A]), /仅教练/);
+      await db.query("update profiles set active=false where id=$1", [B]);
+      const count = async () =>
+        Number(
+          (await db.query<{ n: string }>("select count(*) as n from slots"))
+            .rows[0].n,
+        );
+      const before = await count();
+      await assert.rejects(as("authenticated", C, sql, [B]));
+      assert.equal(await count(), before);
+      await db.query("update profiles set active=true where id=$1", [B]);
+      const created = (await as("authenticated", C, sql, [A])).rows[0].id;
+      assert.ok(created);
+      assert.equal(await count(), before + 1);
+      await assert.rejects(as("authenticated", C, sql, [B]), /重叠/);
+      assert.equal(await count(), before + 1);
+    },
+  );
+  await t.test(
     "snapshots server price, rejects stale prices, foreign purchasers and direct member RPCs",
     async () => {
       order = await prepare();

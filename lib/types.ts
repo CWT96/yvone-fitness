@@ -59,6 +59,7 @@ export type Invite = {
   created_at: string;
 };
 export type Referral = {
+  referred_name?: string;
   id: string;
   referrer_id: string;
   referred_id: string;

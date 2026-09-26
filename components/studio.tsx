@@ -1,4 +1,6 @@
 "use client";
+import { useStudioNavigation } from "@/lib/studio-navigation";
+import { MemberDashboard } from "@/components/member-dashboard";
 import { Payments } from "@/components/payments";
 import { Paginated } from "@/components/paginated";
 import {
@@ -85,6 +87,7 @@ type Field = {
 };
 type Dialog = {
   optionalFields?: Field[];
+  alternate?: { label: string; action: (member?: string) => void };
   title: string;
   description?: string;
   fields: Field[];
@@ -239,6 +242,23 @@ function DialogView({
         <p className="inline-error" role="alert">
           {error}
         </p>
+      )}
+      {dialog.alternate && (
+        <button
+          type="button"
+          className="btn secondary"
+          disabled={busy}
+          onClick={() => {
+            const form = ref.current?.querySelector("form");
+            dialog.alternate?.action(
+              form
+                ? String(new FormData(form).get("p_member") || "")
+                : undefined,
+            );
+          }}
+        >
+          {dialog.alternate.label}
+        </button>
       )}
       <form onSubmit={onSubmit}>
         {dialog.fields.map((f) =>
@@ -415,16 +435,24 @@ export default function Studio() {
     configured ? emptyData() : demoData(),
   );
   const [loading, setLoading] = useState(configured);
-  const [tab, setTab] = useState("overview");
+  const {
+    tab,
+    setTab,
+    filter,
+    setFilter,
+    query,
+    setQuery,
+    memberFilter,
+    setMemberFilter,
+    week,
+    setWeek,
+    go,
+  } = useStudioNavigation();
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [week, setWeek] = useState(0);
-  const [memberFilter, setMemberFilter] = useState("all");
   const [authMode, setAuthMode] = useState<
     "login" | "register" | "reset" | "password"
   >("login");
@@ -550,10 +578,12 @@ export default function Studio() {
         sessionOwner.current = s?.user.id || null;
         setData(emptyData());
         setDialog(null);
-        setTab("overview");
-        setFilter("all");
-        setQuery("");
-        setMemberFilter("all");
+        if (event !== "INITIAL_SESSION") {
+          setTab("overview");
+          setFilter("all");
+          setQuery("");
+          setMemberFilter("all");
+        }
         setError("");
         setLoadError("");
         setLoading(!!s);
@@ -589,6 +619,15 @@ export default function Studio() {
     setError("");
   }, [dialog]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+  useEffect(() => {
+    const close = () => {
+      setDialog(null);
+      setMenu(false);
+      setError("");
+    };
+    window.addEventListener("popstate", close);
+    return () => window.removeEventListener("popstate", close);
+  }, []);
   useEffect(() => {
     if (!menu) return;
     const close = (event: KeyboardEvent) => {
@@ -650,9 +689,8 @@ export default function Studio() {
     data.profiles.find((p) => p.id === id)?.full_name || "学员";
   const navigate = (next: string) => {
     window.scrollTo({ top: 0, behavior: "instant" });
-    setTab(next);
-    setQuery("");
-    setFilter(
+    go(
+      next,
       next === "plans" && !coach
         ? "published"
         : next === "bookings"
@@ -660,7 +698,6 @@ export default function Studio() {
           : "all",
     );
     setMenu(false);
-    setMemberFilter("all");
   };
   const memberOptions = members
     .filter((m) => m.active)
@@ -700,6 +737,25 @@ export default function Studio() {
       now = new Date().toISOString();
     setData((d) => {
       const n = structuredClone(d);
+      if (fn === "book_new_slot") {
+        const slotId = crypto.randomUUID();
+        n.slots.push({
+          id: slotId,
+          starts_at: String(a.p_start),
+          ends_at: String(a.p_end),
+          available: false,
+        });
+        n.appointments.push({
+          id,
+          slot_id: slotId,
+          member_id: String(a.p_member),
+          status: "booked",
+          message: String(a.p_message || ""),
+          reason: "",
+          created_at: now,
+          slots: { starts_at: String(a.p_start), ends_at: String(a.p_end) },
+        });
+      }
       if (
         fn === "record_session_credit" &&
         !n.session_entries.some((e) => e.id === a.p_id)
@@ -991,6 +1047,13 @@ export default function Studio() {
       }
       const available = availableBookingSlots(latestSlots, existing?.slot_id);
       setDialog({
+        alternate:
+          coach && !existing
+            ? {
+                label: "＋ 新增时间并直接预约",
+                action: (selected) => bookNewTime(selected || member),
+              }
+            : undefined,
         title: existing
           ? "调整预约时间"
           : coach
@@ -1083,6 +1146,51 @@ export default function Studio() {
           p_appointment: b.id,
           p_message: v.p_message,
         }),
+    });
+  }
+  function bookNewTime(member?: string) {
+    setDialog({
+      title: "新增时间并预约",
+      description: `按 ${zone} 输入时间，保存后同时新增时段并为学员预约。`,
+      fields: [
+        memberField(member),
+        {
+          name: "start",
+          label: "开始时间",
+          type: "datetime-local",
+          required: true,
+        },
+        {
+          name: "end",
+          label: "结束时间",
+          type: "datetime-local",
+          required: true,
+        },
+        {
+          name: "p_message",
+          label: "预约备注（学员可见，选填）",
+          type: "textarea",
+        },
+      ],
+      submit: "新增并预约",
+      action: async (v) => {
+        const start = localToISO(v.start, zone),
+          end = localToISO(v.end, zone);
+        if (
+          new Date(start) <= new Date() ||
+          end <= start ||
+          Date.parse(end) - Date.parse(start) > 14400000
+        )
+          throw new Error("请选择未来的有效时段（最长 4 小时）");
+        if (data.slots.some((s) => s.starts_at < end && s.ends_at > start))
+          throw new Error("时间段与现有安排重叠，请选择已有时段或调整时间");
+        await mutate("book_new_slot", {
+          p_member: v.p_member,
+          p_start: start,
+          p_end: end,
+          p_message: v.p_message,
+        });
+      },
     });
   }
   function addSlot() {
@@ -2013,7 +2121,7 @@ export default function Studio() {
                           })
                         }
                       >
-                        完成
+                        标记完成
                       </button>
                     )}
                   {coach &&
@@ -2155,7 +2263,11 @@ export default function Studio() {
             </button>
             <span className="breadcrumb">
               我的工作室 <ChevronRight size={14} />
-              <strong>{tabs.find((t) => t[0] === tab)?.[1]}</strong>
+              <strong>
+                {tab === "member"
+                  ? "学员看板"
+                  : tabs.find((t) => t[0] === tab)?.[1]}
+              </strong>
             </span>
           </div>
           <div className="row gap">
@@ -2218,7 +2330,9 @@ export default function Studio() {
               <h1>
                 {tab === "overview"
                   ? `${current.full_name}，今天也要向前一步。`
-                  : tabs.find((t) => t[0] === tab)?.[1]}
+                  : tab === "member"
+                    ? "学员看板"
+                    : tabs.find((t) => t[0] === tab)?.[1]}
               </h1>
               <p>
                 {
@@ -2523,7 +2637,7 @@ export default function Studio() {
                           <button
                             key={m.id}
                             onClick={() => {
-                              navigate("records");
+                              navigate("member");
                               setMemberFilter(m.id);
                             }}
                           >
@@ -2802,10 +2916,24 @@ export default function Studio() {
                   </label>
                 )}
               </div>
+              {coach && (
+                <p className="reload-notice">
+                  课程结束后，在「待确认结果」中标记完成或 No
+                  show。预约成功即已排课，无需额外确认；预约和改期不扣课。
+                  <button
+                    className="text-btn"
+                    onClick={() => setFilter("pending")}
+                  >
+                    去标记课程结果
+                  </button>
+                </p>
+              )}
               {bookingCards(
                 ownAppointments
                   .filter(
                     (b) =>
+                      (memberFilter === "all" ||
+                        b.member_id === memberFilter) &&
                       bookingMatches(b, filter, zone) &&
                       name(b.member_id)
                         .toLowerCase()
@@ -2824,6 +2952,20 @@ export default function Studio() {
                 filter === "upcoming" && !query.trim(),
               )}
             </section>
+          )}
+          {tab === "member" && coach && (
+            <MemberDashboard
+              data={data}
+              memberId={memberFilter}
+              onOpen={(next) => {
+                navigate(next);
+                setMemberFilter(memberFilter);
+              }}
+              onBook={() => book(undefined, undefined, memberFilter)}
+              onPlan={() => editPlan(undefined, memberFilter)}
+              onRecord={() => editRecord(undefined, memberFilter)}
+              bookings={(items) => bookingCards(items, "暂无课程", false)}
+            />
           )}
           {tab === "members" && coach && (
             <section className="panel">
@@ -2884,7 +3026,15 @@ export default function Studio() {
                               <div className="row gap">
                                 <Avatar name={m.full_name} />
                                 <div>
-                                  <strong>{m.full_name}</strong>
+                                  <button
+                                    className="text-btn"
+                                    onClick={() => {
+                                      navigate("member");
+                                      setMemberFilter(m.id);
+                                    }}
+                                  >
+                                    {m.full_name}
+                                  </button>
                                   <small>{m.email}</small>
                                   <small>{m.phone || "未填写电话"}</small>
                                 </div>
@@ -3033,6 +3183,9 @@ export default function Studio() {
           )}
           {tab === "plans" && (
             <>
+              <p className="reload-notice">
+                发布同一学员的新计划后，原当前计划自动转为历史计划。不会因时间自动过期；草稿仅教练可见。
+              </p>
               <div className="toolbar outside">
                 <div className="segmented">
                   {[
@@ -3622,9 +3775,10 @@ export default function Studio() {
                             <tr key={r.id}>
                               {coach && <td>{name(r.referrer_id)}</td>}
                               <td>
-                                {coach
-                                  ? name(r.referred_id)
-                                  : `受邀学员 ${pageOffset + i + 1}`}
+                                {r.referred_name ||
+                                  (coach
+                                    ? name(r.referred_id)
+                                    : "注册姓名待更新")}
                               </td>
                               <td>
                                 {displayTime(

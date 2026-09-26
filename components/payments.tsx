@@ -50,6 +50,7 @@ export function Payments({
     [error, setError] = useState(""),
     [hint, setHint] = useState("");
   const generation = useRef(0);
+  const [opening, setOpening] = useState<string | null>(null);
   const price = data.member_prices.find((p) => p.member_id === member);
   const money = (minor: number, currency: string) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
@@ -118,9 +119,16 @@ export function Payments({
     url.searchParams.delete("order");
     window.history.replaceState(null, "", url);
   }, []);
-  async function checkout(body: unknown) {
+  async function checkout(body: {
+    package?: string;
+    orderId?: string;
+    memberId?: string;
+    quantity?: number;
+    expectedUnit?: number;
+  }) {
     if (busy) return;
     setBusy(true);
+    setOpening(body.package || body.orderId || null);
     setError("");
     try {
       const r = await api("POST", body);
@@ -132,6 +140,7 @@ export function Payments({
       await refresh();
       setError(e instanceof Error ? e.message : "无法打开付款页");
       setBusy(false);
+      setOpening(null);
     }
   }
   const today = displayTime(
@@ -274,7 +283,7 @@ export function Payments({
                     })
                   }
                 >
-                  {busy
+                  {busy && opening === kind
                     ? "正在打开…"
                     : !enabled
                       ? "在线支付尚未开放"
