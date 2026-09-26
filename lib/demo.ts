@@ -176,7 +176,7 @@ export function demoData(): Data {
     ],
     settings: {
       id: 1,
-      studio_name: "Yvone Fitness",
+      studio_name: "Yvonne Fitness",
       timezone: "America/Los_Angeles",
       allow_referral_signup: true,
       location: "训练地点由教练确认",

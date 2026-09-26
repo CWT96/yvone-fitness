@@ -149,7 +149,7 @@ async function processJobs(request: Request) {
             job.subject,
             job.body,
             siteUrl.origin,
-            settings?.studio_name || "Yvone Fitness",
+            settings?.studio_name || "Yvonne Fitness",
           ),
         }),
       });

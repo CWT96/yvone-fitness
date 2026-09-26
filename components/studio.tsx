@@ -224,7 +224,7 @@ function DialogView({
     >
       <div className="modal-head">
         <div>
-          <span className="eyebrow">YVONE FITNESS</span>
+          <span className="eyebrow">YVONNE FITNESS</span>
           <h2 id="dialog-title">{dialog.title}</h2>
         </div>
         <button
@@ -1677,7 +1677,7 @@ export default function Studio() {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = "Yvone-Fitness-推荐记录.csv";
+    a.download = "Yvonne-Fitness-推荐记录.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1813,7 +1813,7 @@ export default function Studio() {
               <Dumbbell />
             </span>
             <span>
-              Yvone Fitness<small>PERSONAL TRAINING</small>
+              Yvonne Fitness<small>PERSONAL TRAINING</small>
             </span>
           </div>
           <div>
@@ -1833,7 +1833,7 @@ export default function Studio() {
               专属计划 · 一对一训练 · 持续进步
             </span>
           </div>
-          <p className="auth-foot">YVONE FITNESS / MEMBER STUDIO</p>
+          <p className="auth-foot">YVONNE FITNESS / MEMBER STUDIO</p>
         </section>
         <section className="auth-form">
           <div className="auth-box">
