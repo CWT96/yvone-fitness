@@ -11,7 +11,7 @@ User selected manual monthly renewal. Checkout always uses payment mode, never s
 - Snapshot events: checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.expired, charge.refunded.
 - Test orders never grant live credits/memberships or send purchase emails.
 - Live prices are read server-side and snapshotted. Students can only buy for themselves.
-- Single purchases grant 1-100 credits. Monthly purchases begin on the Pacific payment date and end one calendar month minus one day later; month-end clamps. Active overlapping monthly access blocks another checkout.
+- Single purchases grant 1-100 credits. Membership purchases (monthly/quarterly/annual) begin on the Pacific payment date and end 1/3/12 calendar months minus one day later; month-end clamps. Active overlapping monthly access blocks another checkout.
 - Settlement verifies signature, order/session, amount, currency and live mode. Duplicate callbacks cannot duplicate entitlements.
 - Refunds are recorded and flagged for coach reconciliation; existing journal entries are not silently removed.
 - Order history uses 10 rows per page. Test orders are hidden from students.

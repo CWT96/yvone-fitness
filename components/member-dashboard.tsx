@@ -148,7 +148,8 @@ export function MemberDashboard({
         </p>
         <p>
           专属价格：单次 {money(price?.single_price)} · 包月{" "}
-          {money(price?.monthly_price)}
+          {money(price?.monthly_price)} · 3 个月 {money(price?.quarterly_price)}{" "}
+          · 12 个月 {money(price?.annual_price)}
         </p>
         <p>
           邮件通知：{m.email_notifications ? "开启" : "关闭"} · 成功推荐{" "}

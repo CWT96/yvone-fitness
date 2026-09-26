@@ -359,5 +359,140 @@ test("one-time payments: private quotes, idempotent fulfillment, sandbox isolati
       await db.exec("reset role");
     },
   );
+  await t.test(
+    "coach can shift into a new overlapping time; conflicts roll back the entire change",
+    async () => {
+      const a = (
+        await db.query<any>(
+          "select id,slot_id from appointments where message='Test booking' and member_id=$1",
+          [A],
+        )
+      ).rows[0];
+      await assert.rejects(
+        as(
+          "authenticated",
+          A,
+          "select reschedule_new_slot($1,now()+interval '10 days 30 minutes',now()+interval '10 days 90 minutes','shift')",
+          [a.id],
+        ),
+        /仅教练/,
+      );
+      await as(
+        "authenticated",
+        C,
+        "select reschedule_new_slot($1,now()+interval '10 days 30 minutes',now()+interval '10 days 90 minutes','shift')",
+        [a.id],
+      );
+      const changed = (
+        await db.query<any>(
+          "select slot_id,reason from appointments where id=$1",
+          [a.id],
+        )
+      ).rows[0];
+      assert.notEqual(changed.slot_id, a.slot_id);
+      assert.equal(changed.reason, "shift");
+      assert.equal(
+        (
+          await db.query<any>("select active from slots where id=$1", [
+            a.slot_id,
+          ])
+        ).rows[0].active,
+        false,
+      );
+      await as(
+        "authenticated",
+        C,
+        "select save_slot(now()+interval '10 days 100 minutes',now()+interval '10 days 160 minutes')",
+      );
+      const count = (await db.query<any>("select count(*) n from slots"))
+        .rows[0].n;
+      await assert.rejects(
+        as(
+          "authenticated",
+          C,
+          "select reschedule_new_slot($1,now()+interval '10 days 80 minutes',now()+interval '10 days 140 minutes','conflict')",
+          [a.id],
+        ),
+        /重叠/,
+      );
+      assert.equal(
+        (
+          await db.query<any>("select active from slots where id=$1", [
+            changed.slot_id,
+          ])
+        ).rows[0].active,
+        true,
+      );
+      assert.equal(
+        (
+          await db.query<any>("select slot_id from appointments where id=$1", [
+            a.id,
+          ])
+        ).rows[0].slot_id,
+        changed.slot_id,
+      );
+      assert.equal(
+        (await db.query<any>("select count(*) n from slots")).rows[0].n,
+        count,
+      );
+    },
+  );
+  await t.test(
+    "3 and 12 month packages use private total prices and calendar expiry with idempotent settlement",
+    async () => {
+      const D = "00000000-0000-4000-8000-000000000054";
+      await assert.rejects(
+        as(
+          "authenticated",
+          D,
+          "select save_member_package_prices($1,90,600,1500,5000,'USD')",
+          [D],
+        ),
+        /仅教练/,
+      );
+      await as(
+        "authenticated",
+        C,
+        "select save_member_package_prices($1,90,600,1500,5000,'USD')",
+        [D],
+      );
+      assert.equal(
+        (
+          await as(
+            "authenticated",
+            B,
+            "select * from member_prices where member_id=$1",
+            [D],
+          )
+        ).rows.length,
+        0,
+      );
+      for (const [kind, amount, paid, start, end] of [
+        [
+          "quarterly",
+          150000,
+          "2030-01-31T20:00:00Z",
+          "2030-01-31",
+          "2030-04-29",
+        ],
+        ["annual", 500000, "2032-02-29T20:00:00Z", "2032-02-29", "2033-02-27"],
+      ] as const) {
+        await assert.rejects(prepare(D, D, kind, 2, amount), /无效/);
+        const o = await prepare(D, D, kind, 1, amount);
+        assert.equal(o.amount_total, amount);
+        await settle(o, undefined, undefined, amount, true, paid);
+        await settle(o, undefined, undefined, amount, true, paid);
+        const rows = (
+          await db.query<any>(
+            "select starts_on::text,ends_on::text from monthly_memberships where id=$1",
+            [o.id],
+          )
+        ).rows;
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].starts_on, start);
+        assert.equal(rows[0].ends_on, end);
+      }
+    },
+  );
   await db.close();
 });

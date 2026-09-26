@@ -1,3 +1,4 @@
+import { packageOptions, type PackageKind } from "@/lib/package-options";
 import {
   APP,
   paymentIdentity,
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
       const member = profile.role === "coach" ? b.memberId : profile.id;
       if (
         !member ||
-        !["single", "monthly"].includes(b.package) ||
+        !Object.hasOwn(packageOptions, b.package) ||
         !Number.isInteger(b.quantity) ||
         !Number.isInteger(b.expectedUnit)
       )
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
                 name:
                   order.package === "single"
                     ? "Yvonne Fitness · 单次私教训练"
-                    : "Yvonne Fitness · 不限次数包月（不自动续费）",
+                    : `Yvonne Fitness · ${packageOptions[order.package as PackageKind].label}（不自动续费）`,
               },
             },
           },
@@ -131,8 +132,8 @@ export async function POST(request: Request) {
         custom_text: {
           submit: {
             message:
-              order.package === "monthly"
-                ? "一次付款，仅购买一个月。有效期从付款当日开始；到期后手动购买，不自动续费。"
+              order.package !== "single"
+                ? `一次付款，购买 ${packageOptions[order.package as PackageKind].months} 个月。有效期从付款当日开始；到期后手动购买，不自动续费。`
                 : "付款确认后自动增加对应课时，预约与未到场规则按工作室约定执行。",
           },
         },

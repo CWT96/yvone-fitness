@@ -2592,3 +2592,6 @@ th,
 .policy-closing { border-top:1px solid var(--line); padding-top:20px; margin:24px 0 0; font-size:13px; line-height:1.8; }
 @media(max-width:800px) { .member-content { grid-template-columns:1fr; } .member-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:520px) { .member-dashboard > .panel,.member-content > .panel,.course-policy { padding:18px; } .member-metrics .panel { padding:18px; } .member-metrics h2 { font-size:24px; } .member-hero .row .btn { flex:1 1 40%; } .member-hero .section-head { flex-wrap:wrap; } .member-dashboard .booking-row { flex-wrap:wrap; } .member-dashboard .booking-actions { width:100%; flex-wrap:wrap; } }
+
+.payments-layout .package-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media(max-width:700px) { .payments-layout .package-grid { grid-template-columns:1fr; } }

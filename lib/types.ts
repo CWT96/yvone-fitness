@@ -107,6 +107,8 @@ export type MemberPrice = {
   member_id: string;
   single_price: number | null;
   monthly_price: number | null;
+  quarterly_price?: number | null;
+  annual_price?: number | null;
   currency: string;
   updated_at: string;
 };

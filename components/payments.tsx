@@ -1,4 +1,5 @@
 "use client";
+import { packageOptions, type PackageKind } from "@/lib/package-options";
 import { CoursePolicy } from "@/components/course-policy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Data, Profile } from "@/lib/types";
@@ -7,7 +8,7 @@ import { displayTime } from "@/lib/time";
 type Order = {
   id: string;
   member_id: string;
-  package: "single" | "monthly";
+  package: PackageKind;
   quantity: number;
   amount_total: number;
   currency: string;
@@ -181,7 +182,7 @@ export function Payments({
               ? coach
                 ? "仅教练可测试；请使用 Stripe 测试卡，测试订单不增加真实课时或包月。"
                 : "教练正在测试付款功能，完成后开放购买。"
-              : "单次按购买数量入账；包月一次付款购买一个月，到期后手动购买，不自动续费。"}
+              : "单次按购买数量入账；期限套餐一次付款购买 1、3 或 12 个月，到期后手动购买，不自动续费。"}
           </p>
         </div>
       </div>
@@ -209,9 +210,8 @@ export function Payments({
       )}
       {(!coach || mode === "test") && (
         <div className="package-grid">
-          {(["single", "monthly"] as const).map((kind) => {
-            const unit =
-              price?.[kind === "single" ? "single_price" : "monthly_price"];
+          {(Object.keys(packageOptions) as PackageKind[]).map((kind) => {
+            const unit = price?.[packageOptions[kind].priceKey];
             const pending = orders.some(
               (o) =>
                 o.member_id === member &&
@@ -223,17 +223,17 @@ export function Payments({
               (mode === "live" && !coach) || (mode === "test" && coach);
             return (
               <article className="package-card" key={kind}>
-                <h2>{kind === "single" ? "单次训练" : "不限次数包月"}</h2>
+                <h2>{packageOptions[kind].label}</h2>
                 <p>
                   {kind === "single"
                     ? "付款确认后自动增加对应课时，训练时间另行预约。"
-                    : "付款当日开始一个月，有效期内不限次数，仍需预约开放时段。"}
+                    : `付款当日开始 ${packageOptions[kind].months} 个月，有效期内不限次数，仍需预约开放时段。`}
                 </p>
                 <div className="price">
                   {unit == null
                     ? "待教练设置"
                     : money(Math.round(unit * 100), price!.currency)}
-                  <small> / {kind === "single" ? "节" : "月"}</small>
+                  <small> / {packageOptions[kind].unit}</small>
                 </div>
                 {kind === "single" && (
                   <label>
@@ -257,10 +257,10 @@ export function Payments({
                         (kind === "single" ? quantity : 1),
                       price!.currency,
                     )}
-                    {kind === "monthly" ? " · 不自动续费" : ""}
+                    {kind !== "single" ? " · 不自动续费" : ""}
                   </p>
                 )}
-                {kind === "monthly" && covered && (
+                {kind !== "single" && covered && (
                   <p>已有包月记录，请到期后再购买。</p>
                 )}
                 {pending && <p>已有待付款订单，请在下方继续支付或关闭。</p>}
@@ -273,7 +273,7 @@ export function Payments({
                     unit == null ||
                     unit <= 0 ||
                     pending ||
-                    (kind === "monthly" && covered) ||
+                    (kind !== "single" && covered) ||
                     !Number.isInteger(quantity) ||
                     quantity < 1 ||
                     quantity > 100
@@ -358,7 +358,7 @@ export function Payments({
                   <td>
                     {o.package === "single"
                       ? `${o.quantity} 节训练`
-                      : "单月不限次"}
+                      : packageOptions[o.package].label}
                     {o.starts_on && (
                       <small>
                         {o.starts_on} 至 {o.ends_on}

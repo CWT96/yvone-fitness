@@ -28,6 +28,10 @@ export function memberNeeds(data: Data, memberId: string) {
         p.member_id === memberId && !p.deleted_at && p.status === "published",
     ),
     price:
-      !price || (price.single_price == null && price.monthly_price == null),
+      !price ||
+      (price.single_price == null &&
+        price.monthly_price == null &&
+        price.quarterly_price == null &&
+        price.annual_price == null),
   };
 }

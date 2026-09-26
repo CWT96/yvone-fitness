@@ -738,6 +738,33 @@ export default function Studio() {
       now = new Date().toISOString();
     setData((d) => {
       const n = structuredClone(d);
+      if (fn === "reschedule_new_slot") {
+        const aId = String(a.p_appointment),
+          previous = n.appointments.find((b) => b.id === aId);
+        if (previous) {
+          const slotId = crypto.randomUUID();
+          const overlap =
+            previous.slots.starts_at < String(a.p_end) &&
+            previous.slots.ends_at > String(a.p_start);
+          n.slots = n.slots
+            .filter((s) => !overlap || s.id !== previous.slot_id)
+            .map((s) =>
+              s.id === previous.slot_id ? { ...s, available: true } : s,
+            );
+          n.slots.push({
+            id: slotId,
+            starts_at: String(a.p_start),
+            ends_at: String(a.p_end),
+            available: false,
+          });
+          previous.slot_id = slotId;
+          previous.slots = {
+            starts_at: String(a.p_start),
+            ends_at: String(a.p_end),
+          };
+          previous.reason = String(a.p_message || "");
+        }
+      }
       if (fn === "book_new_slot") {
         const slotId = crypto.randomUUID();
         n.slots.push({
@@ -981,7 +1008,7 @@ export default function Studio() {
               : r,
           );
       }
-      if (fn === "save_member_prices") {
+      if (fn === "save_member_package_prices") {
         n.member_prices = n.member_prices.filter(
           (p) => p.member_id !== a.p_member,
         );
@@ -990,6 +1017,8 @@ export default function Studio() {
           member_id: String(a.p_member),
           single_price: a.p_single === null ? null : Number(a.p_single),
           monthly_price: a.p_monthly === null ? null : Number(a.p_monthly),
+          quarterly_price: a.p_quarterly == null ? null : Number(a.p_quarterly),
+          annual_price: a.p_annual == null ? null : Number(a.p_annual),
           currency: String(a.p_currency),
           updated_at: now,
         });
@@ -1048,13 +1077,12 @@ export default function Studio() {
       }
       const available = availableBookingSlots(latestSlots, existing?.slot_id);
       setDialog({
-        alternate:
-          coach && !existing
-            ? {
-                label: "＋ 新增时间并直接预约",
-                action: (selected) => bookNewTime(selected || member),
-              }
-            : undefined,
+        alternate: coach
+          ? {
+              label: existing ? "＋ 新增时间并改期" : "＋ 新增时间并直接预约",
+              action: (selected) => bookNewTime(selected || member, existing),
+            }
+          : undefined,
         title: existing
           ? "调整预约时间"
           : coach
@@ -1151,12 +1179,12 @@ export default function Studio() {
         }),
     });
   }
-  function bookNewTime(member?: string) {
+  function bookNewTime(member?: string, existing?: Appointment) {
     setDialog({
-      title: "新增时间并预约",
-      description: `按 ${zone} 输入时间，保存后同时新增时段并为学员预约。`,
+      title: existing ? "新增时间并改期" : "新增时间并预约",
+      description: `按 ${zone} 输入时间。${existing ? `为 ${name(existing.member_id)} 改期，保留原预约记录和历史。` : "保存后同时新增时段并为学员预约。"}`,
       fields: [
-        memberField(member),
+        ...(!existing ? [memberField(member)] : []),
         {
           name: "start",
           label: "开始时间",
@@ -1171,11 +1199,11 @@ export default function Studio() {
         },
         {
           name: "p_message",
-          label: "预约备注（学员可见，选填）",
+          label: existing ? "改期原因（选填）" : "预约备注（学员可见，选填）",
           type: "textarea",
         },
       ],
-      submit: "新增并预约",
+      submit: existing ? "新增并改期" : "新增并预约",
       action: async (v) => {
         const start = localToISO(v.start, zone),
           end = localToISO(v.end, zone);
@@ -1185,10 +1213,19 @@ export default function Studio() {
           Date.parse(end) - Date.parse(start) > 14400000
         )
           throw new Error("请选择未来的有效时段（最长 4 小时）");
-        if (data.slots.some((s) => s.starts_at < end && s.ends_at > start))
+        if (
+          data.slots.some(
+            (s) =>
+              s.id !== existing?.slot_id &&
+              s.starts_at < end &&
+              s.ends_at > start,
+          )
+        )
           throw new Error("时间段与现有安排重叠，请选择已有时段或调整时间");
-        await mutate("book_new_slot", {
-          p_member: v.p_member,
+        await mutate(existing ? "reschedule_new_slot" : "book_new_slot", {
+          ...(existing
+            ? { p_appointment: existing.id }
+            : { p_member: v.p_member }),
           p_start: start,
           p_end: end,
           p_message: v.p_message,
@@ -1508,7 +1545,7 @@ export default function Studio() {
     setDialog({
       title: `设置 ${name(memberId)} 的专属价格`,
       description:
-        "只有你和这位学员能看到。包月不限次数；留空表示尚未设置。当前不会收款。",
+        "只有你和这位学员能看到。1、3、12 个月均不限次数，填写整个周期总金额；留空表示尚未设置。保存价格不会发起收款。",
       submit: "保存专属价格",
       fields: [
         {
@@ -1530,6 +1567,24 @@ export default function Studio() {
           step: 0.01,
         },
         {
+          name: "quarterly",
+          label: "3 个月套餐总金额（不限次数）",
+          type: "number",
+          value: price?.quarterly_price ?? "",
+          min: 0,
+          max: 999999.99,
+          step: 0.01,
+        },
+        {
+          name: "annual",
+          label: "12 个月套餐总金额（不限次数）",
+          type: "number",
+          value: price?.annual_price ?? "",
+          min: 0,
+          max: 999999.99,
+          step: 0.01,
+        },
+        {
           name: "currency",
           label: "币种",
           type: "select",
@@ -1542,10 +1597,12 @@ export default function Studio() {
         },
       ],
       action: (v) =>
-        mutate("save_member_prices", {
+        mutate("save_member_package_prices", {
           p_member: memberId,
           p_single: v.single === "" ? null : Number(v.single),
           p_monthly: v.monthly === "" ? null : Number(v.monthly),
+          p_quarterly: v.quarterly === "" ? null : Number(v.quarterly),
+          p_annual: v.annual === "" ? null : Number(v.annual),
           p_currency: v.currency,
         }),
     });
@@ -3841,7 +3898,8 @@ export default function Studio() {
                     {coach ? "按学员设置专属价格" : "你的专属课程方案"}
                   </strong>
                   <p>
-                    单次训练与不限次数包月。金额只对本人和教练可见；包月到期后手动购买，不自动续费。
+                    单次训练，以及 1、3、12
+                    个月不限次套餐。金额为整个周期总价，仅本人和教练可见；到期手动购买，不自动续费。
                   </p>
                 </div>
               </div>
@@ -3853,7 +3911,9 @@ export default function Studio() {
                         <tr>
                           <th>学员</th>
                           <th>单次训练</th>
-                          <th>不限次数包月</th>
+                          <th>1 个月</th>
+                          <th>3 个月</th>
+                          <th>12 个月</th>
                           <th>操作</th>
                         </tr>
                       </thead>
@@ -3868,7 +3928,7 @@ export default function Studio() {
                             current.id,
                           ]}
                           label="专属价格"
-                          tableColumns={4}
+                          tableColumns={6}
                         >
                           {(pageItems, pageOffset) =>
                             pageItems.map((m) => {
@@ -3883,6 +3943,15 @@ export default function Studio() {
                                   </td>
                                   <td>
                                     {formatPrice(p?.monthly_price, p?.currency)}
+                                  </td>
+                                  <td>
+                                    {formatPrice(
+                                      p?.quarterly_price,
+                                      p?.currency,
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatPrice(p?.annual_price, p?.currency)}
                                   </td>
                                   <td>
                                     <button
