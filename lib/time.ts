@@ -1,4 +1,4 @@
-import { zhCN } from "date-fns/locale";
+import { enUS, zhCN } from "date-fns/locale";
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
 export function localToISO(value: string, zone: string) {
   const date = fromZonedTime(value, zone);
@@ -13,8 +13,26 @@ export function displayTime(
   value: string,
   zone: string,
   format = "MM月dd日 EEE HH:mm",
+  language: "zh" | "en" = "zh",
 ) {
-  return formatInTimeZone(new Date(value), zone, format, { locale: zhCN });
+  if (language === "en") {
+    const formats: Record<string, string> = {
+      "MM月dd日 EEE HH:mm": "EEE, MMM d · h:mm a",
+      "yyyy年MM月dd日 EEE HH:mm": "EEE, MMM d, yyyy · h:mm a",
+      "yyyy年MM月dd日 EEEE": "EEEE, MMM d, yyyy",
+      "MM月dd日 EEEE": "EEEE, MMM d",
+      "HH:mm": "h:mm a",
+      "yyyy.MM EEE": "MMM yyyy · EEE",
+      "yyyy.MM.dd HH:mm": "MMM d, yyyy · h:mm a",
+      "yyyy.MM.dd EEE HH:mm": "EEE, MMM d, yyyy · h:mm a",
+      "yyyy.MM.dd": "MMM d, yyyy",
+      "MM.dd HH:mm": "MMM d · h:mm a",
+    };
+    format = formats[format] || format;
+  }
+  return formatInTimeZone(new Date(value), zone, format, {
+    locale: language === "en" ? enUS : zhCN,
+  });
 }
 export function csvCell(value: unknown) {
   let text = String(value ?? "");

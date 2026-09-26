@@ -1,10 +1,11 @@
 "use client";
+import { useLanguage } from "@/components/language-provider";
+
 import { packageOptions, type PackageKind } from "@/lib/package-options";
 import { CoursePolicy } from "@/components/course-policy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Data, Profile } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
-import { displayTime } from "@/lib/time";
 type Order = {
   id: string;
   member_id: string;
@@ -40,6 +41,7 @@ export function Payments({
   demo: boolean;
   onRefresh: () => Promise<void>;
 }) {
+  const { t, displayTime, language } = useLanguage();
   const coach = current.role === "coach";
   const [mode, setMode] = useState("disabled"),
     [orders, setOrders] = useState<Order[]>([]),
@@ -60,12 +62,12 @@ export function Payments({
     );
   const api = useCallback(
     async (method: string, body?: unknown) => {
-      if (!supabase || demo) throw new Error("演示环境不发起付款");
+      if (!supabase || demo) throw new Error(t("演示环境不发起付款"));
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session || session.user.id !== current.id)
-        throw new Error("登录已变化，请刷新页面");
+        throw new Error(t("登录已变化，请刷新页面"));
       const r = await fetch(
         `/api/payments${method === "GET" ? `?page=${page}${coach && member ? `&member=${encodeURIComponent(member)}` : ""}` : ""}`,
         {
@@ -78,7 +80,7 @@ export function Payments({
         },
       );
       const result = await r.json();
-      if (!r.ok) throw new Error(result.error || "付款服务暂不可用");
+      if (!r.ok) throw new Error(result.error || t("付款服务暂不可用"));
       return result;
     },
     [demo, current.id, page, coach, member],
@@ -98,7 +100,7 @@ export function Payments({
         setPage(Math.max(1, Math.ceil(r.total / 10)));
     } catch (e) {
       if (n === generation.current)
-        setError(e instanceof Error ? e.message : "加载失败");
+        setError(e instanceof Error ? e.message : t("加载失败"));
     } finally {
       if (n === generation.current) setLoading(false);
     }
@@ -114,8 +116,10 @@ export function Payments({
     if (!url.searchParams.has("payment")) return;
     setHint(
       url.searchParams.get("payment") === "cancel"
-        ? "已返回网站。退出付款页不会扣款；待付款订单可以继续支付或关闭。"
-        : "已返回网站。请以订单中的付款与入账状态为准；若仍在处理中，请稍后刷新，不要重复购买。",
+        ? t("已返回网站。退出付款页不会扣款；待付款订单可以继续支付或关闭。")
+        : t(
+            "已返回网站。请以订单中的付款与入账状态为准；若仍在处理中，请稍后刷新，不要重复购买。",
+          ),
     );
     url.searchParams.delete("payment");
     url.searchParams.delete("order");
@@ -136,11 +140,11 @@ export function Payments({
       const r = await api("POST", body);
       const url = new URL(r.url);
       if (url.protocol !== "https:" || url.hostname !== "checkout.stripe.com")
-        throw new Error("付款网址无效");
+        throw new Error(t("付款网址无效"));
       window.location.assign(url.href);
     } catch (e) {
       await refresh();
-      setError(e instanceof Error ? e.message : "无法打开付款页");
+      setError(e instanceof Error ? e.message : t("无法打开付款页"));
       setBusy(false);
       setOpening(null);
     }
@@ -156,48 +160,52 @@ export function Payments({
   return (
     <section className="payments-layout">
       <a className="policy-jump" href="#course-policy">
-        购课须知：有效期 · 请假改期 · 迟到与缺席 ↓
+        {t("购课须知：有效期 · 请假改期 · 迟到与缺席 ↓")}
       </a>
       {hint && (
         <div className="notice">
-          <p>{hint}</p>
+          <p>{t(hint)}</p>
         </div>
       )}
       {error && (
         <p role="alert" className="payment-error">
-          {error}
+          {t(error)}
         </p>
       )}
       <div className="notice">
         <div>
           <strong>
             {mode === "test"
-              ? "支付测试中"
+              ? t("支付测试中")
               : mode === "live"
-                ? "安全在线购课"
-                : "在线支付尚未开放"}
+                ? t("安全在线购课")
+                : t("在线支付尚未开放")}
           </strong>
           <p>
             {mode === "test"
               ? coach
-                ? "仅教练可测试；请使用 Stripe 测试卡，测试订单不增加真实课时或包月。"
-                : "教练正在测试付款功能，完成后开放购买。"
-              : "单次按购买数量入账；期限套餐一次付款购买 1、3 或 12 个月，到期后手动购买，不自动续费。"}
+                ? t(
+                    "仅教练可测试；请使用 Stripe 测试卡，测试订单不增加真实课时或包月。",
+                  )
+                : t("教练正在测试付款功能，完成后开放购买。")
+              : t(
+                  "单次按购买数量入账；期限套餐一次付款购买 1、3 或 12 个月，到期后手动购买，不自动续费。",
+                )}
           </p>
         </div>
       </div>
       {coach && mode === "test" && (
         <label>
-          选择测试价格的学员
+          {t("选择测试价格的学员")}
           <select
-            aria-label="支付测试学员"
+            aria-label={t("支付测试学员")}
             value={member}
             onChange={(e) => {
               setMember(e.target.value);
               setPage(1);
             }}
           >
-            <option value="">请选择学员</option>
+            <option value="">{t("请选择学员")}</option>
             {data.profiles
               .filter((p) => p.role === "member" && p.active)
               .map((p) => (
@@ -223,23 +231,32 @@ export function Payments({
               (mode === "live" && !coach) || (mode === "test" && coach);
             return (
               <article className="package-card" key={kind}>
-                <h2>{packageOptions[kind].label}</h2>
+                <h2>{t(packageOptions[kind].label)}</h2>
                 <p>
                   {kind === "single"
-                    ? "付款确认后自动增加对应课时，训练时间另行预约。"
-                    : `付款当日开始 ${packageOptions[kind].months} 个月，有效期内不限次数，仍需预约开放时段。`}
+                    ? t("付款确认后自动增加对应课时，训练时间另行预约。")
+                    : t(
+                        "付款当日开始 {0} 个月，有效期内不限次数，仍需预约开放时段。",
+                        [packageOptions[kind].months],
+                      )}
                 </p>
                 <div className="price">
                   {unit == null
-                    ? "待教练设置"
+                    ? t("待教练设置")
                     : money(Math.round(unit * 100), price!.currency)}
-                  <small> / {packageOptions[kind].unit}</small>
+                  <small>
+                    {" "}
+                    /{" "}
+                    {language === "en" && kind === "single"
+                      ? "session"
+                      : t(packageOptions[kind].unit)}
+                  </small>
                 </div>
                 {kind === "single" && (
                   <label>
-                    购买节数
+                    {t("购买节数")}
                     <input
-                      aria-label="购买节数"
+                      aria-label={t("购买节数")}
                       type="number"
                       min={1}
                       max={100}
@@ -251,19 +268,21 @@ export function Payments({
                 )}
                 {unit != null && (
                   <p>
-                    本次合计{" "}
+                    {t("本次合计")}{" "}
                     {money(
                       Math.round(unit * 100) *
                         (kind === "single" ? quantity : 1),
                       price!.currency,
                     )}
-                    {kind !== "single" ? " · 不自动续费" : ""}
+                    {kind !== "single" ? t(" · 不自动续费") : ""}
                   </p>
                 )}
                 {kind !== "single" && covered && (
-                  <p>已有包月记录，请到期后再购买。</p>
+                  <p>{t("已有包月记录，请到期后再购买。")}</p>
                 )}
-                {pending && <p>已有待付款订单，请在下方继续支付或关闭。</p>}
+                {pending && (
+                  <p>{t("已有待付款订单，请在下方继续支付或关闭。")}</p>
+                )}
                 <button
                   className="btn full"
                   disabled={
@@ -288,17 +307,17 @@ export function Payments({
                   }
                 >
                   {busy && opening === kind
-                    ? "正在打开…"
+                    ? t("正在打开…")
                     : !enabled
-                      ? "在线支付尚未开放"
+                      ? t("在线支付尚未开放")
                       : mode === "test"
-                        ? "打开测试付款页"
-                        : "前往 Stripe 付款"}
+                        ? t("打开测试付款页")
+                        : t("前往 Stripe 付款")}
                 </button>
                 <small>
                   {unit === 0
-                    ? "免费课程请联系教练入账。"
-                    : "购买前请阅读本页购课须知，并在套餐有效期内安排训练。"}
+                    ? t("免费课程请联系教练入账。")
+                    : t("购买前请阅读本页购课须知，并在套餐有效期内安排训练。")}
                 </small>
               </article>
             );
@@ -308,8 +327,8 @@ export function Payments({
       <section className="panel">
         <div className="section-head">
           <div>
-            <h2>{coach ? "在线付款记录" : "我的付款记录"}</h2>
-            <p>每页 10 条。付款、入账与退款状态分别保留。</p>
+            <h2>{coach ? t("在线付款记录") : t("我的付款记录")}</h2>
+            <p>{t("每页 10 条。付款、入账与退款状态分别保留。")}</p>
           </div>
           <button
             className="btn secondary small"
@@ -317,22 +336,22 @@ export function Payments({
             onClick={() => {
               void refresh();
               void onRefresh().catch(() =>
-                setHint("付款记录已刷新；课时余额可稍后重新加载。"),
+                setHint(t("付款记录已刷新；课时余额可稍后重新加载。")),
               );
             }}
           >
-            {loading ? "加载中…" : "刷新记录与课时"}
+            {loading ? t("加载中…") : t("刷新记录与课时")}
           </button>
         </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>时间 / 订单</th>
-                {coach && <th>学员</th>}
-                <th>购买内容</th>
-                <th>金额 / 状态</th>
-                <th>入账与操作</th>
+                <th>{t("时间 / 订单")}</th>
+                {coach && <th>{t("学员")}</th>}
+                <th>{t("购买内容")}</th>
+                <th>{t("金额 / 状态")}</th>
+                <th>{t("入账与操作")}</th>
               </tr>
             </thead>
             <tbody>
@@ -346,44 +365,46 @@ export function Payments({
                     )}
                     <small>
                       {o.id.slice(0, 8)}
-                      {!o.livemode ? " · 测试" : ""}
+                      {!o.livemode ? t(" · 测试") : ""}
                     </small>
                   </td>
                   {coach && (
                     <td>
                       {data.profiles.find((p) => p.id === o.member_id)
-                        ?.full_name || "学员"}
+                        ?.full_name || t("学员")}
                     </td>
                   )}
                   <td>
                     {o.package === "single"
-                      ? `${o.quantity} 节训练`
-                      : packageOptions[o.package].label}
+                      ? t("{0} 节训练", [o.quantity])
+                      : t(packageOptions[o.package].label)}
                     {o.starts_on && (
                       <small>
-                        {o.starts_on} 至 {o.ends_on}
+                        {o.starts_on} {t("至")}
+                        {o.ends_on}
                       </small>
                     )}
                   </td>
                   <td>
                     {money(o.amount_total, o.currency)}
-                    <small>{states[o.status] || o.status}</small>
+                    <small>{t(states[o.status] || o.status)}</small>
                     {o.amount_refunded > 0 && (
                       <small>
-                        已退款 {money(o.amount_refunded, o.currency)}
+                        {t("已退款")}
+                        {money(o.amount_refunded, o.currency)}
                       </small>
                     )}
                   </td>
                   <td>
                     {o.fulfillment === "test"
-                      ? "测试成功 · 不计入真实课时"
+                      ? t("测试成功 · 不计入真实课时")
                       : o.fulfillment === "fulfilled"
-                        ? "已入账"
+                        ? t("已入账")
                         : o.fulfillment === "review"
-                          ? o.review_note
+                          ? t(o.review_note)
                           : o.paid_at
-                            ? "付款已确认，正在入账"
-                            : "尚未入账"}
+                            ? t("付款已确认，正在入账")
+                            : t("尚未入账")}
                     {o.status === "pending" &&
                       o.livemode === (mode === "live") &&
                       mode !== "disabled" &&
@@ -394,7 +415,7 @@ export function Payments({
                             disabled={busy}
                             onClick={() => void checkout({ orderId: o.id })}
                           >
-                            继续付款
+                            {t("继续付款")}
                           </button>
                           <button
                             className="text-btn muted"
@@ -407,14 +428,16 @@ export function Payments({
                                 await refresh();
                               } catch (e) {
                                 setError(
-                                  e instanceof Error ? e.message : "操作失败",
+                                  e instanceof Error
+                                    ? e.message
+                                    : t("操作失败"),
                                 );
                               } finally {
                                 setBusy(false);
                               }
                             }}
                           >
-                            关闭未付款订单
+                            {t("关闭未付款订单")}
                           </button>
                         </div>
                       )}
@@ -426,27 +449,29 @@ export function Payments({
         </div>
         {!orders.length && !loading && (
           <p className="accounts-empty">
-            暂无在线付款记录。教练手动录入的购课在「课时与统计」查看。
+            {t("暂无在线付款记录。教练手动录入的购课在「课时与统计」查看。")}
           </p>
         )}
         {total > 10 && (
-          <nav className="payment-pagination" aria-label="付款记录分页">
+          <nav className="payment-pagination" aria-label={t("付款记录分页")}>
             <button
               className="btn secondary small"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => p - 1)}
             >
-              上一页
+              {t("上一页")}
             </button>
             <span>
-              第 {page} / {Math.ceil(total / 10)} 页 · 共 {total} 条
+              {t("第")}
+              {page} / {Math.ceil(total / 10)} {t("页 · 共")}
+              {total} {t("条")}
             </span>
             <button
               className="btn secondary small"
               disabled={page * 10 >= total || loading}
               onClick={() => setPage((p) => p + 1)}
             >
-              下一页
+              {t("下一页")}
             </button>
           </nav>
         )}

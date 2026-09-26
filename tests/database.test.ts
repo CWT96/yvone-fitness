@@ -38,6 +38,15 @@ test("database authorization, registration, booking and delivery rules", async (
       "utf8",
     ),
   );
+  const languageMigration = await readFile(
+    new URL(
+      "../supabase/migrations/202609260003_member_language.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await db.exec(languageMigration);
+  await db.exec(languageMigration);
   async function as<T = Record<string, unknown>>(
     uid: string,
     sql: string,
@@ -106,6 +115,7 @@ test("database authorization, registration, booking and delivery rules", async (
     await signup(A, "a@example.com", "MEMBER-A", {
       role: "coach",
       active: true,
+      language: "en",
     });
     await signup(B, "b@example.com", "MEMBER-B");
     assert.equal(
@@ -118,6 +128,57 @@ test("database authorization, registration, booking and delivery rules", async (
       "member",
     );
   });
+  await t.test(
+    "member language persists without changing roles, access or another member",
+    async () => {
+      assert.equal(
+        (
+          await db.query<{ language: string }>(
+            "select language from profiles where id=$1",
+            [A],
+          )
+        ).rows[0].language,
+        "en",
+      );
+      await as(A, "select set_member_language('zh')");
+      assert.equal(
+        (
+          await db.query<{ language: string }>(
+            "select raw_user_meta_data->>'language' language from auth.users where id=$1",
+            [A],
+          )
+        ).rows[0].language,
+        "zh",
+      );
+      assert.equal(
+        (
+          await db.query<{ language: string | null }>(
+            "select language from profiles where id=$1",
+            [B],
+          )
+        ).rows[0].language,
+        null,
+      );
+      await assert.rejects(
+        as(A, "select set_member_language('fr')"),
+        /Unsupported/,
+      );
+      await assert.rejects(
+        as(A, "update profiles set language='en' where id=$1", [B]),
+        /permission denied/,
+      );
+      await assert.rejects(
+        as(C, "select set_member_language('en')"),
+        /Only members/,
+      );
+      await as(C, "select set_member_active($1,false)", [A]);
+      await assert.rejects(
+        as(A, "select set_member_language('en')"),
+        /active account/,
+      );
+      await as(C, "select set_member_active($1,true)", [A]);
+    },
+  );
   await t.test("a single-use invitation cannot be reused", async () => {
     await assert.rejects(
       signup(crypto.randomUUID(), "reuse@example.com", "MEMBER-A"),

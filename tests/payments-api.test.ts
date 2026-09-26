@@ -23,6 +23,7 @@ test("payment API authenticates callers, snapshots prices and verifies Stripe si
     SITE_URL: "https://yvonnefitness.com",
   });
   const originalFetch = globalThis.fetch;
+  let language = "zh";
   let role = "member",
     live = false,
     paid = false,
@@ -71,7 +72,7 @@ test("payment API authenticates callers, snapshots prices and verifies Stripe si
     if (url.pathname === "/auth/v1/user")
       return json({ id: "member-a", aud: "authenticated" });
     if (url.pathname === "/rest/v1/profiles")
-      return json({ id: "member-a", role, active: true });
+      return json({ id: "member-a", role, active: true, language });
     if (url.pathname === "/rest/v1/rpc/prepare_payment_order")
       return json({ ...o, livemode: live });
     if (url.pathname === "/rest/v1/rpc/settle_payment_order")
@@ -199,6 +200,50 @@ test("payment API authenticates callers, snapshots prices and verifies Stripe si
         process.env.STRIPE_MODE = "test";
         process.env.STRIPE_SECRET_KEY = "rk_test_local_fixture";
         live = false;
+      },
+    );
+    await t.test(
+      "English member checkout localizes labels without changing prices or payment mode",
+      async () => {
+        role = "member";
+        language = "en";
+        live = true;
+        process.env.STRIPE_MODE = "live";
+        process.env.STRIPE_SECRET_KEY = "rk_live_local_fixture";
+        for (const kind of ["single", "monthly", "quarterly", "annual"]) {
+          o.package = kind;
+          const result = await POST(
+            req("POST", {
+              package: kind,
+              quantity: kind === "single" ? 3 : 1,
+              expectedUnit: 9000,
+            }),
+          );
+          assert.equal(result.status, 200);
+          const checkout = requests
+            .filter(
+              (r) =>
+                r.url.hostname === "api.stripe.com" &&
+                r.url.pathname.endsWith("/sessions"),
+            )
+            .at(-1)!;
+          assert.equal(checkout.body.locale, "en");
+          assert.equal(checkout.body.mode, "payment");
+          assert.equal(
+            checkout.body["line_items[0][price_data][unit_amount]"],
+            "9000",
+          );
+          assert.doesNotMatch(
+            checkout.body["line_items[0][price_data][product_data][name]"] +
+              checkout.body["custom_text[submit][message]"],
+            /[\u3400-\u9fff]/,
+          );
+        }
+        o.package = "single";
+        language = "zh";
+        live = false;
+        process.env.STRIPE_MODE = "test";
+        process.env.STRIPE_SECRET_KEY = "rk_test_local_fixture";
       },
     );
     const stripe = new Stripe("sk_test_fixture");

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/language-provider";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { pageWindow } from "@/lib/pagination";
 
@@ -15,6 +17,7 @@ export function Paginated<T>({
   tableColumns?: number;
   children: (items: T[], offset: number) => ReactNode;
 }) {
+  const { t } = useLanguage();
   const key = JSON.stringify(resetKey);
   const [position, setPosition] = useState({ key, page: 1 });
   const { page, pages, start, end } = pageWindow(
@@ -36,9 +39,11 @@ export function Paginated<T>({
   }
   const controls =
     items.length > 10 ? (
-      <nav ref={nav} className="pagination" aria-label={`${label}分页`}>
+      <nav ref={nav} className="pagination" aria-label={t("{0}分页", [label])}>
         <span role="status">
-          共 {items.length} 条 · 显示 {start + 1}–{end} 条
+          {t("共")}
+          {items.length} {t("条 · 显示")}
+          {start + 1}–{end} {t("条")}
         </span>
         <div className="row gap">
           <button
@@ -46,21 +51,22 @@ export function Paginated<T>({
             className="btn secondary small"
             onClick={() => go(page - 1)}
             disabled={page === 1}
-            aria-label={`${label}上一页`}
+            aria-label={t("{0}上一页", [label])}
           >
-            上一页
+            {t("上一页")}
           </button>
           <span>
-            第 {page} / {pages} 页
+            {t("第")}
+            {page} / {pages} {t("页")}
           </span>
           <button
             type="button"
             className="btn secondary small"
             onClick={() => go(page + 1)}
             disabled={page === pages}
-            aria-label={`${label}下一页`}
+            aria-label={t("{0}下一页", [label])}
           >
-            下一页
+            {t("下一页")}
           </button>
         </div>
       </nav>

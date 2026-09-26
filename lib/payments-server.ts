@@ -40,7 +40,7 @@ export async function paymentIdentity(request: Request) {
   if (error || !user) return null;
   const { data: p } = await db
     .from("profiles")
-    .select("id,role,active")
+    .select("id,role,active,language")
     .eq("id", user.id)
     .single();
   if (!p?.active) return null;

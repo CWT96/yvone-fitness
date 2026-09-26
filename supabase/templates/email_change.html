@@ -1,0 +1,7 @@
+<div style="background:#f4f6f1;padding:32px;font-family:Arial,sans-serif;color:#203a32"><div style="max-width:560px;margin:auto;background:white;padding:32px;border-radius:12px"><p>Yvonne Fitness</p>
+{{ if eq .Data.language "en" }}
+<h2>Confirm your email change</h2><p style="line-height:1.8">Confirm your email change. If verification is required in both inboxes, complete both steps before logging in with your new email.</p><p><a href="{{ .ConfirmationURL }}">Confirm email change</a></p><p>If you did not request this, you can safely ignore this email.</p>
+{{ else }}
+<h2>确认更改邮箱</h2><p style="line-height:1.8">请确认邮箱变更。如新旧邮箱均收到验证邮件，请分别完成验证后再用新邮箱登录。</p><p><a href="{{ .ConfirmationURL }}">确认更改邮箱</a></p><p>如果你未发起此操作，请忽略本邮件。</p>
+{{ end }}
+</div></div>

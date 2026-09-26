@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n";
 import { packageOptions, type PackageKind } from "@/lib/package-options";
 import {
   APP,
@@ -107,9 +108,11 @@ export async function POST(request: Request) {
       return json({ url: s.url });
     }
     const origin = paymentOrigin();
+    const language = profile.language === "en" ? "en" : "zh";
     const s = await stripe.checkout.sessions.create(
       {
         mode: "payment",
+        locale: language === "en" ? "en" : "zh",
         payment_method_types: ["card"],
         client_reference_id: order.id,
         metadata: { app: APP, order_id: order.id },
@@ -123,8 +126,10 @@ export async function POST(request: Request) {
               product_data: {
                 name:
                   order.package === "single"
-                    ? "Yvonne Fitness · 单次私教训练"
-                    : `Yvonne Fitness · ${packageOptions[order.package as PackageKind].label}（不自动续费）`,
+                    ? language === "en"
+                      ? "Yvonne Fitness · Personal training session"
+                      : "Yvonne Fitness · 单次私教训练"
+                    : `Yvonne Fitness · ${translate(packageOptions[order.package as PackageKind].label, language)}${language === "en" ? " (no automatic renewal)" : "（不自动续费）"}`,
               },
             },
           },
@@ -133,8 +138,12 @@ export async function POST(request: Request) {
           submit: {
             message:
               order.package !== "single"
-                ? `一次付款，购买 ${packageOptions[order.package as PackageKind].months} 个月。有效期从付款当日开始；到期后手动购买，不自动续费。`
-                : "付款确认后自动增加对应课时，预约与未到场规则按工作室约定执行。",
+                ? language === "en"
+                  ? `One-time payment for ${packageOptions[order.package as PackageKind].months} month(s), starting on the payment date. Renew manually; no automatic renewal.`
+                  : `一次付款，购买 ${packageOptions[order.package as PackageKind].months} 个月。有效期从付款当日开始；到期后手动购买，不自动续费。`
+                : language === "en"
+                  ? "Session credits are added after payment is confirmed. The studio booking and no-show policy applies."
+                  : "付款确认后自动增加对应课时，预约与未到场规则按工作室约定执行。",
           },
         },
         expires_at: Math.floor(Date.parse(order.created_at) / 1000) + 3600,

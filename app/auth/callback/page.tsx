@@ -1,12 +1,15 @@
 "use client";
+import { useLanguage } from "@/components/language-provider";
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 export default function Callback() {
+  const { t } = useLanguage();
   const [error, setError] = useState("");
   useEffect(() => {
     async function finish() {
       if (!supabase) {
-        setError("Supabase 尚未配置");
+        setError(t("Supabase 尚未配置"));
         return;
       }
       const query = new URLSearchParams(window.location.search);
@@ -26,7 +29,9 @@ export default function Callback() {
       }
       if (!data.session) {
         setError(
-          "验证链接已失效，或不是在发起注册/重置的浏览器中打开。请返回登录页重新操作。",
+          t(
+            "验证链接已失效，或不是在发起注册/重置的浏览器中打开。请返回登录页重新操作。",
+          ),
         );
         return;
       }
@@ -38,12 +43,12 @@ export default function Callback() {
   }, []);
   return (
     <div className="loading">
-      <h2>{error ? "无法完成验证" : "正在验证账号…"}</h2>
+      <h2>{error ? t("无法完成验证") : t("正在验证账号…")}</h2>
       {error && (
         <>
-          <p>{error}</p>
+          <p>{t(error)}</p>
           <a className="btn" href="/">
-            返回登录
+            {t("返回登录")}
           </a>
         </>
       )}

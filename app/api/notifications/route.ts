@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "node:crypto";
 import { syncContacts } from "@/lib/contact-sync";
-import { emailPolicyReminder } from "@/lib/course-policy";
-import { emailContent } from "@/lib/email";
+import { translate } from "@/lib/i18n";
+import { emailContent, emailText } from "@/lib/email";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -89,7 +89,7 @@ async function processJobs(request: Request) {
       if (liveError) throw liveError;
       const { data: recipient, error: recipientError } = await db
         .from("profiles")
-        .select("email,full_name,email_notifications,active,role")
+        .select("email,full_name,email_notifications,active,role,language")
         .eq("id", job.recipient_id)
         .single();
       if (recipientError) throw recipientError;
@@ -131,6 +131,10 @@ async function processJobs(request: Request) {
         counts.skipped++;
         continue;
       }
+      const language =
+        recipient.role === "member" && recipient.language === "en"
+          ? "en"
+          : "zh";
       const result = await fetch("https://api.resend.com/emails", {
         method: "POST",
         signal: AbortSignal.timeout(4000),
@@ -142,14 +146,21 @@ async function processJobs(request: Request) {
         body: JSON.stringify({
           from,
           to: [recipient.email],
-          subject: job.subject,
-          text: `${recipient.full_name}，你好：\n${job.body}${emailPolicyReminder(job.subject) ? `\n\n温馨提醒：${emailPolicyReminder(job.subject)}\n完整购课须知：${siteUrl.origin}/?page=packages#course-policy` : ""}\n${siteUrl.origin}\n可在个人设置中关闭提醒。`,
+          subject: translate(job.subject, language),
+          text: emailText(
+            recipient.full_name,
+            job.subject,
+            job.body,
+            siteUrl.origin,
+            language,
+          ),
           html: emailContent(
             recipient.full_name,
             job.subject,
             job.body,
             siteUrl.origin,
             settings?.studio_name || "Yvonne Fitness",
+            language,
           ),
         }),
       });

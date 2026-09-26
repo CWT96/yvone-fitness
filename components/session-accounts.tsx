@@ -1,9 +1,11 @@
 "use client";
+import { useLanguage } from "@/components/language-provider";
+
+import { localizedSystemNote } from "@/lib/notification-language";
 import { Paginated } from "@/components/paginated";
 import { useState } from "react";
 import type { Data, MonthlyMembership } from "@/lib/types";
 import { entryLabels, memberSessionStats } from "@/lib/session-accounts";
-import { displayTime } from "@/lib/time";
 
 type Props = {
   data: Data;
@@ -23,6 +25,7 @@ export function SessionAccounts({
   onMonthly,
   onCancelMonthly,
 }: Props) {
+  const { t, displayTime, language } = useLanguage();
   const [search, setSearch] = useState("");
   const [onlyShort, setOnlyShort] = useState(false);
   const members = data.profiles.filter((p) => p.role === "member");
@@ -42,18 +45,20 @@ export function SessionAccounts({
   );
   const money = (amount: number | null, currency: string) =>
     amount == null
-      ? "未记录金额"
+      ? t("未记录金额")
       : new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
           amount,
         );
   if (!data.credits_ready)
     return (
       <section className="panel accounts-panel">
-        <h2>课时账户尚未启用</h2>
+        <h2>{t("课时账户尚未启用")}</h2>
         <p>
           {coach
-            ? "数据库更新完成后，重新加载即可录入购课和查看余额。启用前不要依赖课时余额结算。"
-            : "教练正在核对课时账户，启用后可在这里查看余额和明细。"}
+            ? t(
+                "数据库更新完成后，重新加载即可录入购课和查看余额。启用前不要依赖课时余额结算。",
+              )
+            : t("教练正在核对课时账户，启用后可在这里查看余额和明细。")}
         </p>
       </section>
     );
@@ -62,17 +67,17 @@ export function SessionAccounts({
       {coach && (
         <div className="toolbar outside">
           <label>
-            查看学员{" "}
+            {t("查看学员")}{" "}
             <select
-              aria-label="查看课时学员"
+              aria-label={t("查看课时学员")}
               value={memberId}
               onChange={(e) => onSelect(e.target.value)}
             >
-              <option value="all">全部学员</option>
+              <option value="all">{t("全部学员")}</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.full_name}
-                  {m.active ? "" : "（已停用）"}
+                  {m.active ? "" : t("（已停用）")}
                 </option>
               ))}
             </select>
@@ -80,8 +85,8 @@ export function SessionAccounts({
           {!selected && (
             <input
               className="account-search"
-              aria-label="搜索课时学员"
-              placeholder="搜索姓名或邮箱"
+              aria-label={t("搜索课时学员")}
+              placeholder={t("搜索姓名或邮箱")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -93,24 +98,37 @@ export function SessionAccounts({
           <div className="stats-grid account-stats">
             {[
               [
-                "累计完成授课",
-                `${allStats.reduce((sum, s) => sum + s.completed, 0)} 节`,
-                `累计 ${allStats.reduce((sum, s) => sum + s.hours, 0).toFixed(1)} 小时 · 另有 ${allStats.reduce((sum, s) => sum + s.noShows, 0)} 次缺席`,
+                t("累计完成授课"),
+                t("{0} 节", [
+                  allStats.reduce((sum, s) => sum + s.completed, 0),
+                ]),
+                t("累计 {0} 小时 · 另有 {1} 次缺席", [
+                  allStats.reduce((sum, s) => sum + s.hours, 0).toFixed(1),
+                  allStats.reduce((sum, s) => sum + s.noShows, 0),
+                ]),
               ],
               [
-                "本月完成",
-                `${allStats.reduce((sum, s) => sum + s.thisMonth, 0)} 节`,
-                "按上课日期统计，取消及缺席不计入",
+                t("本月完成"),
+                t("{0} 节", [
+                  allStats.reduce((sum, s) => sum + s.thisMonth, 0),
+                ]),
+                t("按上课日期统计，取消及缺席不计入"),
               ],
               [
-                "已预约未上",
-                `${allStats.reduce((sum, s) => sum + s.upcoming, 0)} 节`,
-                "含进行中课程，尚未扣课",
+                t("已预约未上"),
+                t("{0} 节", [allStats.reduce((sum, s) => sum + s.upcoming, 0)]),
+                t("含进行中课程，尚未扣课"),
               ],
               [
-                "待确认结果",
-                `${data.appointments.filter((b) => b.status === "booked" && Date.parse(b.slots.ends_at) <= Date.now()).length} 节`,
-                "标记完成或未到场；只有完成计入授课统计",
+                t("待确认结果"),
+                t("{0} 节", [
+                  data.appointments.filter(
+                    (b) =>
+                      b.status === "booked" &&
+                      Date.parse(b.slots.ends_at) <= Date.now(),
+                  ).length,
+                ]),
+                t("标记完成或未到场；只有完成计入授课统计"),
               ],
             ].map(([label, value, note]) => (
               <div className="stat-card" key={label}>
@@ -125,13 +143,13 @@ export function SessionAccounts({
               className={!onlyShort ? "active" : ""}
               onClick={() => setOnlyShort(false)}
             >
-              全部课时账户
+              {t("全部课时账户")}
             </button>
             <button
               className={onlyShort ? "active" : ""}
               onClick={() => setOnlyShort(true)}
             >
-              余额不足 / 待核对（
+              {t("余额不足 / 待核对（")}
               {
                 allStats.filter(
                   (s) => s.balance < 0 || s.balance < s.needsCredits,
@@ -146,10 +164,11 @@ export function SessionAccounts({
         <section className="panel">
           <div className="section-head">
             <div>
-              <h2>学员课时总览</h2>
+              <h2>{t("学员课时总览")}</h2>
               <p className="muted">
-                按次课程完成或未到场均扣 1
-                节；包月内不扣按次余额。已预约另外列出。
+                {t(
+                  "按次课程完成或未到场均扣 1 节；包月内不扣按次余额。已预约另外列出。",
+                )}
               </p>
             </div>
           </div>
@@ -157,19 +176,19 @@ export function SessionAccounts({
             <table>
               <thead>
                 <tr>
-                  <th>学员</th>
-                  <th>剩余按次</th>
-                  <th>已预约未上</th>
-                  <th>累计完成 / 时长</th>
-                  <th>包月状态</th>
-                  <th>操作</th>
+                  <th>{t("学员")}</th>
+                  <th>{t("剩余按次")}</th>
+                  <th>{t("已预约未上")}</th>
+                  <th>{t("累计完成 / 时长")}</th>
+                  <th>{t("包月状态")}</th>
+                  <th>{t("操作")}</th>
                 </tr>
               </thead>
               <tbody>
                 <Paginated
                   items={visibleMembers}
                   resetKey={[memberId, search, onlyShort]}
-                  label="课时账户"
+                  label={t("课时账户")}
                   tableColumns={6}
                 >
                   {(pageItems, pageOffset) =>
@@ -179,29 +198,35 @@ export function SessionAccounts({
                         <tr key={m.id}>
                           <td>
                             <strong>{m.full_name}</strong>
-                            <small>{m.active ? "在训" : "已停用"}</small>
+                            <small>{m.active ? t("在训") : t("已停用")}</small>
                           </td>
                           <td>
                             <strong
                               className={s.balance < 0 ? "account-warning" : ""}
                             >
-                              {s.balance} 节
+                              {s.balance} {t("节")}
                             </strong>
                             {s.balance < 0 ? (
-                              <small>待补录或核对</small>
+                              <small>{t("待补录或核对")}</small>
                             ) : s.balance < s.needsCredits ? (
-                              <small>不足覆盖已预约课程</small>
+                              <small>{t("不足覆盖已预约课程")}</small>
                             ) : null}
                           </td>
-                          <td>{s.upcoming} 节</td>
                           <td>
-                            {s.completed} 节 / {s.hours.toFixed(1)} 小时
-                            <small>另有 {s.noShows} 次缺席</small>
+                            {s.upcoming} {t("节")}
+                          </td>
+                          <td>
+                            {s.completed} {t("节 /")}
+                            {s.hours.toFixed(1)} {t("小时")}
+                            <small>
+                              {t("另有")}
+                              {s.noShows} {t("次缺席")}
+                            </small>
                           </td>
                           <td>
                             {s.membership
-                              ? `有效至 ${s.membership.ends_on}`
-                              : "当前无有效包月"}
+                              ? t("有效至 {0}", [s.membership.ends_on])
+                              : t("当前无有效包月")}
                           </td>
                           <td>
                             <div className="row gap wrap">
@@ -209,13 +234,13 @@ export function SessionAccounts({
                                 className="text-btn"
                                 onClick={() => onSelect(m.id)}
                               >
-                                查看明细
+                                {t("查看明细")}
                               </button>
                               <button
                                 className="text-btn"
                                 onClick={() => onCredit(m.id)}
                               >
-                                录入购课
+                                {t("录入购课")}
                               </button>
                             </div>
                           </td>
@@ -228,7 +253,7 @@ export function SessionAccounts({
             </table>
           </div>
           {!visibleMembers.length && (
-            <p className="accounts-empty">没有符合条件的学员</p>
+            <p className="accounts-empty">{t("没有符合条件的学员")}</p>
           )}
         </section>
       ) : selected && stats ? (
@@ -236,29 +261,32 @@ export function SessionAccounts({
           <div className="account-heading">
             <div>
               <h2>
-                {coach ? `${selected.full_name} 的课时账户` : "我的课时账户"}
+                {coach
+                  ? t("{0} 的课时账户", [selected.full_name])
+                  : t("我的课时账户")}
               </h2>
               <p className="muted">
-                按次课程完成或未到场各扣 1
-                节；包月缺席只记次数。缺席不计入训练次数和时长。
+                {t(
+                  "按次课程完成或未到场各扣 1 节；包月缺席只记次数。缺席不计入训练次数和时长。",
+                )}
               </p>
             </div>
             {coach && (
               <div className="row gap wrap">
                 <button className="btn" onClick={() => onCredit(selected.id)}>
-                  录入购课
+                  {t("录入购课")}
                 </button>
                 <button
                   className="btn secondary"
                   onClick={() => onMonthly(selected.id)}
                 >
-                  录入包月
+                  {t("录入包月")}
                 </button>
                 <button
                   className="text-btn"
                   onClick={() => onCredit(selected.id, true)}
                 >
-                  调整课时
+                  {t("调整课时")}
                 </button>
               </div>
             )}
@@ -266,26 +294,33 @@ export function SessionAccounts({
           <div className="stats-grid account-stats">
             {[
               [
-                "剩余按次课时",
-                `${stats.balance} 节`,
+                t("剩余按次课时"),
+                t("{0} 节", [stats.balance]),
                 stats.balance < 0
-                  ? "课时余额待核对"
-                  : `购课 ${stats.purchased} + 调整 ${stats.adjusted} − 已扣 ${stats.used}`,
+                  ? t("课时余额待核对")
+                  : t("购课 {0} + 调整 {1} − 已扣 {2}", [
+                      stats.purchased,
+                      stats.adjusted,
+                      stats.used,
+                    ]),
               ],
               [
-                "已预约未上",
-                `${stats.upcoming} 节`,
-                `其中 ${stats.needsCredits} 节需使用按次课时，尚未扣除`,
+                t("已预约未上"),
+                t("{0} 节", [stats.upcoming]),
+                t("其中 {0} 节需使用按次课时，尚未扣除", [stats.needsCredits]),
               ],
               [
-                "历史完成",
-                `${stats.completed} 节`,
-                `累计 ${stats.hours.toFixed(1)} 小时 · 另有 ${stats.noShows} 次缺席`,
+                t("历史完成"),
+                t("{0} 节", [stats.completed]),
+                t("累计 {0} 小时 · 另有 {1} 次缺席", [
+                  stats.hours.toFixed(1),
+                  stats.noShows,
+                ]),
               ],
               [
-                "本月完成",
-                `${stats.thisMonth} 节`,
-                "按工作室时区及上课日期统计",
+                t("本月完成"),
+                t("{0} 节", [stats.thisMonth]),
+                t("按工作室时区及上课日期统计"),
               ],
             ].map(([title, value, note]) => (
               <div className="stat-card" key={title}>
@@ -298,33 +333,38 @@ export function SessionAccounts({
           {stats.balance < 0 && (
             <div className="notice">
               <p>
-                当前欠 {Math.abs(stats.balance)} 节。
+                {t("当前欠")}
+                {Math.abs(stats.balance)} {t("节。")}
                 {coach
-                  ? "请核对是否遗漏购课，或通过调整课时纠正；历史课程不会因余额不足丢失。"
-                  : "请与教练核对购课和上课记录。"}
+                  ? t(
+                      "请核对是否遗漏购课，或通过调整课时纠正；历史课程不会因余额不足丢失。",
+                    )
+                  : t("请与教练核对购课和上课记录。")}
               </p>
             </div>
           )}
           {stats.balance >= 0 && stats.balance < stats.needsCredits && (
             <div className="notice">
               <p>
-                当前按次余额不足覆盖已预约的按次课程，请
-                {coach ? "核对并安排续课" : "与教练确认续课"}
-                。预约不会提前扣课。
+                {t("当前按次余额不足覆盖已预约的按次课程，请")}
+                {coach ? t("核对并安排续课") : t("与教练确认续课")}
+                {t("。预约不会提前扣课。")}
               </p>
             </div>
           )}
           <section className="panel accounts-panel">
-            <h2>包月记录</h2>
+            <h2>{t("包月记录")}</h2>
             <p className="muted">
-              有效期内不限次数（含开始日和结束日）。按上课日期判断，包月上课不会消耗按次余额。
+              {t(
+                "有效期内不限次数（含开始日和结束日）。按上课日期判断，包月上课不会消耗按次余额。",
+              )}
             </p>
             <Paginated
               items={data.monthly_memberships
                 .filter((m) => m.member_id === selected.id)
                 .sort((a, b) => b.starts_on.localeCompare(a.starts_on))}
               resetKey={[memberId, search, onlyShort]}
-              label="包月记录"
+              label={t("包月记录")}
             >
               {(pageItems, pageOffset) =>
                 pageItems.map((m) => (
@@ -335,18 +375,18 @@ export function SessionAccounts({
                       </strong>
                       <p>
                         {m.cancelled_at
-                          ? "已作废"
+                          ? t("已作废")
                           : m.starts_on > today
-                            ? "尚未开始"
+                            ? t("尚未开始")
                             : m.ends_on < today
-                              ? "已到期"
-                              : "有效中 · 不限次数"}{" "}
+                              ? t("已到期")
+                              : t("有效中 · 不限次数")}{" "}
                         · {money(m.amount, m.currency)}
                       </p>
                       <small>
-                        {m.note}
+                        {localizedSystemNote(m.note, language)}
                         {m.cancel_reason
-                          ? ` · 作废原因：${m.cancel_reason}`
+                          ? t(" · 作废原因：{0}", [m.cancel_reason])
                           : ""}
                       </small>
                     </div>
@@ -355,7 +395,7 @@ export function SessionAccounts({
                         className="text-btn"
                         onClick={() => onCancelMonthly(m)}
                       >
-                        作废
+                        {t("作废")}
                       </button>
                     )}
                   </article>
@@ -364,15 +404,16 @@ export function SessionAccounts({
             </Paginated>
             {!data.monthly_memberships.some(
               (m) => m.member_id === selected.id,
-            ) && <p className="muted">暂无包月记录。</p>}
+            ) && <p className="muted">{t("暂无包月记录。")}</p>}
           </section>
           <section className="panel">
             <div className="section-head">
               <div>
-                <h2>课时流水</h2>
+                <h2>{t("课时流水")}</h2>
                 <p className="muted">
-                  每笔购课、调整、完成和缺席都保留记录；包月上课及缺席显示
-                  0，不扣按次余额。
+                  {t(
+                    "每笔购课、调整、完成和缺席都保留记录；包月上课及缺席显示 0，不扣按次余额。",
+                  )}
                 </p>
               </div>
             </div>
@@ -380,11 +421,11 @@ export function SessionAccounts({
               <table>
                 <thead>
                   <tr>
-                    <th>入账时间</th>
-                    <th>类型</th>
-                    <th>课时增减</th>
-                    <th>金额记录</th>
-                    <th>说明</th>
+                    <th>{t("入账时间")}</th>
+                    <th>{t("类型")}</th>
+                    <th>{t("课时增减")}</th>
+                    <th>{t("金额记录")}</th>
+                    <th>{t("说明")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -397,7 +438,7 @@ export function SessionAccounts({
                           b.id.localeCompare(a.id),
                       )}
                     resetKey={[memberId, search, onlyShort]}
-                    label="课时流水"
+                    label={t("课时流水")}
                     tableColumns={5}
                   >
                     {(pageItems, pageOffset) =>
@@ -414,11 +455,11 @@ export function SessionAccounts({
                                 "yyyy.MM.dd HH:mm",
                               )}
                             </td>
-                            <td>{entryLabels[e.kind]}</td>
+                            <td>{t(entryLabels[e.kind])}</td>
                             <td>
                               <strong>
                                 {e.quantity > 0 ? "+" : ""}
-                                {e.quantity} 节
+                                {e.quantity} {t("节")}
                               </strong>
                             </td>
                             <td>
@@ -427,10 +468,12 @@ export function SessionAccounts({
                                 : "—"}
                             </td>
                             <td>
-                              {e.note}
+                              {e.kind === "adjustment"
+                                ? e.note
+                                : localizedSystemNote(e.note, language)}
                               {b && (
                                 <small>
-                                  排课：
+                                  {t("排课：")}
                                   {displayTime(
                                     b.slots.starts_at,
                                     zone,
@@ -449,21 +492,23 @@ export function SessionAccounts({
             </div>
             {!data.session_entries.some((e) => e.member_id === selected.id) && (
               <p className="accounts-empty">
-                暂无流水。
+                {t("暂无流水。")}
                 {coach
-                  ? "已有余课请通过「调整课时」录入核对后的期初余额。"
-                  : "请教练核对并录入已有课时。"}
+                  ? t("已有余课请通过「调整课时」录入核对后的期初余额。")
+                  : t("请教练核对并录入已有课时。")}
               </p>
             )}
           </section>
           <section className="panel">
             <div className="section-head">
               <div>
-                <h2>历史课程记录</h2>
+                <h2>{t("历史课程记录")}</h2>
                 <p className="muted">
-                  完成与缺席分别列出；缺席不计入训练次数和时长。
+                  {t("完成与缺席分别列出；缺席不计入训练次数和时长。")}
                   {stats.legacyCompleted > 0 &&
-                    `${stats.legacyCompleted} 节历史课程未计入课时余额，不会自动补扣。`}
+                    t("{0} 节历史课程未计入课时余额，不会自动补扣。", [
+                      stats.legacyCompleted,
+                    ])}
                 </p>
               </div>
             </div>
@@ -471,9 +516,9 @@ export function SessionAccounts({
               <table>
                 <thead>
                   <tr>
-                    <th>上课时间</th>
-                    <th>结果 / 训练时长</th>
-                    <th>课时结算</th>
+                    <th>{t("上课时间")}</th>
+                    <th>{t("结果 / 训练时长")}</th>
+                    <th>{t("课时结算")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -488,7 +533,7 @@ export function SessionAccounts({
                         b.slots.starts_at.localeCompare(a.slots.starts_at),
                       )}
                     resetKey={[memberId, search, onlyShort]}
-                    label="上课历史"
+                    label={t("上课历史")}
                     tableColumns={3}
                   >
                     {(pageItems, pageOffset) =>
@@ -507,16 +552,22 @@ export function SessionAccounts({
                             </td>
                             <td>
                               {b.status === "no_show"
-                                ? "未到场 · No show"
-                                : `已完成 · ${Math.round((Date.parse(b.slots.ends_at) - Date.parse(b.slots.starts_at)) / 60000)} 分钟`}
+                                ? t("未到场 · No show")
+                                : t("已完成 · {0} 分钟", [
+                                    Math.round(
+                                      (Date.parse(b.slots.ends_at) -
+                                        Date.parse(b.slots.starts_at)) /
+                                        60000,
+                                    ),
+                                  ])}
                               {b.status === "no_show" && b.reason && (
                                 <small>{b.reason}</small>
                               )}
                             </td>
                             <td>
                               {entry
-                                ? entryLabels[entry.kind]
-                                : "历史课程 · 未计入余额"}
+                                ? t(entryLabels[entry.kind])
+                                : t("历史课程 · 未计入余额")}
                             </td>
                           </tr>
                         );
@@ -528,13 +579,13 @@ export function SessionAccounts({
             </div>
             {!stats.completed && !stats.noShows && (
               <p className="accounts-empty">
-                教练确认课程结果后，这里会保留完成或缺席记录。
+                {t("教练确认课程结果后，这里会保留完成或缺席记录。")}
               </p>
             )}
           </section>
         </>
       ) : (
-        <p>请选择学员查看课时账户。</p>
+        <p>{t("请选择学员查看课时账户。")}</p>
       )}
     </div>
   );

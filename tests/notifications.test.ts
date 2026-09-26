@@ -27,6 +27,7 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
   delete process.env.RESEND_CONTACTS_API_KEY;
   delete process.env.RESEND_SEGMENT_ID;
   const originalFetch = globalThis.fetch;
+  let language = "zh";
   let role = "member",
     notifications = true,
     providerStatus = 200;
@@ -63,6 +64,7 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
     if (url.pathname === "/rest/v1/profiles")
       return json({
         role,
+        language,
         active: true,
         email_notifications: notifications,
         email: "member@example.test",
@@ -155,6 +157,28 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
             assert.match(String(message.html), /购课须知 · 温馨提醒/);
           }
         }
+      },
+    );
+    await t.test(
+      "member preference controls email language; coach stays Chinese",
+      async () => {
+        language = "en";
+        role = "member";
+        queue = [
+          {
+            ...job(),
+            subject: "预约已改期",
+            body: "原时间：2026-09-27 09:00 – 2026-09-27 10:00\n新时间：2026-09-28 09:00 – 2026-09-28 10:00",
+          },
+        ];
+        await POST(request(process.env.CRON_SECRET));
+        assert.equal(emails.at(-1)!.body.subject, "Booking rescheduled");
+        assert.match(String(emails.at(-1)!.body.text), /12 hours/);
+        assert.match(String(emails.at(-1)!.body.text), /Previous time/);
+        role = "coach";
+        await POST(request(process.env.CRON_SECRET));
+        assert.equal(emails.at(-1)!.body.subject, "预约已改期");
+        language = "zh";
       },
     );
     await t.test(

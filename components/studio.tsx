@@ -1,4 +1,6 @@
 "use client";
+import { LanguageSelect, useLanguage } from "@/components/language-provider";
+
 import { useStudioNavigation } from "@/lib/studio-navigation";
 import { MemberDashboard } from "@/components/member-dashboard";
 import { changeReminder, attendanceReminder } from "@/lib/course-policy";
@@ -70,7 +72,7 @@ import type {
   RecordEntry,
   MonthlyMembership,
 } from "@/lib/types";
-import { displayTime, localToISO, csvCell, scheduleDays } from "@/lib/time";
+import { localToISO, csvCell, scheduleDays } from "@/lib/time";
 import type { Session } from "@supabase/supabase-js";
 
 type Field = {
@@ -165,9 +167,10 @@ const emptyData = (): Data => ({
   credits_ready: false,
 });
 function Badge({ value, label }: { value: string; label?: string }) {
+  const { t } = useLanguage();
   return (
     <span className={`badge ${value}`}>
-      {label || statusNames[value] || value}
+      {t(label || statusNames[value] || value)}
     </span>
   );
 }
@@ -178,10 +181,11 @@ function Empty({
   text?: string;
   action?: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="empty">
       <Activity size={28} />
-      <p>{text}</p>
+      <p>{t(text)}</p>
       {action}
     </div>
   );
@@ -202,6 +206,7 @@ function DialogView({
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const { t } = useLanguage();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();
@@ -229,7 +234,7 @@ function DialogView({
         </div>
         <button
           className="icon-btn"
-          aria-label="关闭"
+          aria-label={t("关闭")}
           disabled={busy}
           onClick={onClose}
         >
@@ -241,7 +246,7 @@ function DialogView({
       )}
       {error && (
         <p className="inline-error" role="alert">
-          {error}
+          {t(error)}
         </p>
       )}
       <form onSubmit={onSubmit}>
@@ -249,7 +254,7 @@ function DialogView({
           f.type === "slots" ? (
             <fieldset className="slot-choices" key={f.name}>
               <legend>
-                {f.label}
+                {t(f.label)}
                 {f.required && " *"}
               </legend>
               {dialog.alternate && (
@@ -286,11 +291,11 @@ function DialogView({
                 </div>
               ) : (
                 <p role="status" className="empty-slots">
-                  {f.hint}
+                  {t(f.hint)}
                 </p>
               )}
               {!!f.options?.length && (
-                <small>请选择一个时段，再确认保存。</small>
+                <small>{t("请选择一个时段，再确认保存。")}</small>
               )}
             </fieldset>
           ) : (
@@ -305,12 +310,12 @@ function DialogView({
                     type="checkbox"
                     defaultChecked={Boolean(f.value)}
                   />
-                  <span>{f.label}</span>
+                  <span>{t(f.label)}</span>
                 </>
               ) : (
                 <>
                   <span>
-                    {f.label}
+                    {t(f.label)}
                     {f.required && " *"}
                   </span>
                   {f.type === "textarea" ? (
@@ -328,7 +333,7 @@ function DialogView({
                       required={f.required}
                     >
                       <option value="" disabled>
-                        请选择
+                        {t("请选择")}
                       </option>
                       {f.options?.map((o) => (
                         <option value={o.value} key={o.value}>
@@ -351,7 +356,7 @@ function DialogView({
                   )}
                 </>
               )}
-              {f.hint && <small>{f.hint}</small>}
+              {f.hint && <small>{t(f.hint)}</small>}
             </label>
           ),
         )}
@@ -364,14 +369,14 @@ function DialogView({
               ) || undefined
             }
           >
-            <summary>围度与身体状态（选填）</summary>
+            <summary>{t("围度与身体状态（选填）")}</summary>
             <p className="muted">
-              身高和围度用英寸（in）；只填写本次测量的数据。
+              {t("身高和围度用英寸（in）；只填写本次测量的数据。")}
             </p>
             <div className="measurement-fields">
               {dialog.optionalFields.map((f) => (
                 <label className="field" key={f.name}>
-                  <span>{f.label}</span>
+                  <span>{t(f.label)}</span>
                   <input
                     name={f.name}
                     type="number"
@@ -393,7 +398,7 @@ function DialogView({
               disabled={busy}
               onClick={onClose}
             >
-              返回
+              {t("返回")}
             </button>
           )}
           {dialog.publication && (
@@ -404,7 +409,7 @@ function DialogView({
               className="btn secondary"
               disabled={busy}
             >
-              保存草稿（仅教练）
+              {t("保存草稿（仅教练）")}
             </button>
           )}
           <button
@@ -420,7 +425,7 @@ function DialogView({
               )
             }
           >
-            {busy ? "正在保存…" : dialog.submit || "保存"}
+            {busy ? t("正在保存…") : dialog.submit || t("保存")}
           </button>
         </div>
       </form>
@@ -429,6 +434,9 @@ function DialogView({
 }
 
 export default function Studio() {
+  const { t, displayTime, language, preference, setPreference, setCoach } =
+    useLanguage();
+  const [languageBusy, setLanguageBusy] = useState(false);
   const [demo, setDemo] = useState(!configured);
   const [demoRole, setDemoRole] = useState<"coach" | "member">("coach");
   const [session, setSession] = useState<Session | null>(null);
@@ -476,6 +484,51 @@ export default function Studio() {
       setTab("packages");
   }, [current]);
   const coach = current?.role === "coach";
+  useEffect(() => {
+    setCoach(!!coach && !showAuth);
+    return () => setCoach(false);
+  }, [coach, showAuth, setCoach]);
+  useEffect(() => {
+    if (current?.role === "member" && current.language)
+      setPreference(current.language);
+  }, [current?.id, current?.language, setPreference]);
+  async function changeLanguage(next: "zh" | "en") {
+    if (languageBusy) return;
+    setLanguageBusy(true);
+    try {
+      if (current?.role === "member") {
+        if (!demo && supabase) {
+          const { error } = await supabase.rpc("set_member_language", {
+            p_language: next,
+          });
+          if (error) throw error;
+        }
+        setData((old) => ({
+          ...old,
+          profiles: old.profiles.map((p) =>
+            p.id === current.id ? { ...p, language: next } : p,
+          ),
+        }));
+      }
+      setPreference(next);
+    } catch {
+      setError(t("语言偏好未保存，请重试。"));
+    } finally {
+      setLanguageBusy(false);
+    }
+  }
+  const initialLanguageSaved = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !loading &&
+      current?.role === "member" &&
+      current.language == null &&
+      initialLanguageSaved.current !== current.id
+    ) {
+      initialLanguageSaved.current = current.id;
+      void changeLanguage(preference);
+    }
+  }, [loading, current?.id, current?.language, preference]);
   const zone = data.settings.timezone;
   const members = data.profiles.filter((p) => p.role === "member");
   const notify = useCallback((message: string) => {
@@ -605,7 +658,7 @@ export default function Studio() {
       setLoading(true);
       load()
         .catch(() => {
-          if (active) setLoadError("暂时无法读取数据，请检查网络后重试。");
+          if (active) setLoadError(t("暂时无法读取数据，请检查网络后重试。"));
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -654,7 +707,8 @@ export default function Studio() {
     const refresh = () => {
       if (document.visibilityState === "visible")
         load().catch(() => {
-          if (active) setLoadError("自动刷新未成功，当前显示上次读取的数据。");
+          if (active)
+            setLoadError(t("自动刷新未成功，当前显示上次读取的数据。"));
         });
     };
     window.addEventListener("focus", refresh);
@@ -670,7 +724,7 @@ export default function Studio() {
     try {
       await load();
     } catch {
-      setLoadError("暂时无法读取数据，请检查网络后重试。");
+      setLoadError(t("暂时无法读取数据，请检查网络后重试。"));
     } finally {
       setBusy(false);
     }
@@ -682,12 +736,12 @@ export default function Studio() {
   }
   const formatPrice = (value: number | null | undefined, currency = "USD") =>
     value == null
-      ? "待教练设置"
+      ? t("待教练设置")
       : new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
           value,
         );
   const name = (id: string) =>
-    data.profiles.find((p) => p.id === id)?.full_name || "学员";
+    data.profiles.find((p) => p.id === id)?.full_name || t("学员");
   const navigate = (next: string) => {
     window.scrollTo({ top: 0, behavior: "instant" });
     go(
@@ -705,7 +759,7 @@ export default function Studio() {
     .map((m) => ({ value: m.id, label: m.full_name }));
   const memberField = (id?: string): Field => ({
     name: "p_member",
-    label: "指定学员",
+    label: t("指定学员"),
     type: "select",
     value: initialMember(
       id,
@@ -715,22 +769,22 @@ export default function Studio() {
     required: true,
     options: memberOptions,
     hint: memberOptions.length
-      ? "请确认内容归属的学员。"
-      : "暂无可用学员，请先邀请学员注册或恢复学员账号。",
+      ? t("请确认内容归属的学员。")
+      : t("暂无可用学员，请先邀请学员注册或恢复学员账号。"),
   });
   async function mutate(fn: string, args: Record<string, unknown>) {
     if (demo) {
       demoMutate(fn, args);
       return;
     }
-    if (!supabase) throw new Error("请先连接 Supabase");
+    if (!supabase) throw new Error(t("请先连接 Supabase"));
     const refreshed = await saveThenRefresh(async () => {
       const { error } = await supabase!.rpc(fn, args);
       if (error) throw error;
     }, load);
     if (!refreshed)
       setLoadError(
-        "操作已保存，但页面刷新失败。请点击重新加载，不要重复提交。",
+        t("操作已保存，但页面刷新失败。请点击重新加载，不要重复提交。"),
       );
   }
   function demoMutate(fn: string, a: Record<string, unknown>) {
@@ -921,11 +975,11 @@ export default function Studio() {
                 quantity: monthly ? 0 : -1,
                 note: absent
                   ? monthly
-                    ? "包月内未到场，只记缺席，不扣按次课时"
-                    : "未到场，扣除 1 节"
+                    ? t("包月内未到场，只记缺席，不扣按次课时")
+                    : t("未到场，扣除 1 节")
                   : monthly
-                    ? "包月内完成课程，不扣按次课时"
-                    : "完成课程，扣除 1 节",
+                    ? t("包月内完成课程，不扣按次课时")
+                    : t("完成课程，扣除 1 节"),
                 amount: null,
                 currency: "USD",
                 appointment_id: booking.id,
@@ -1043,19 +1097,19 @@ export default function Studio() {
       }
       for (const f of dialog.fields) {
         if (f.required && f.type !== "checkbox" && !values[f.name]?.trim())
-          throw new Error(`请填写${f.label}`);
+          throw new Error(t("请填写{0}", [f.label]));
       }
       await dialog.action(values);
       setDialog(null);
       notify(
         demo
-          ? "已更新演示数据（刷新后恢复）"
+          ? t("已更新演示数据（刷新后恢复）")
           : dialog.success ||
               (dialog.publication
                 ? values.intent === "publish"
-                  ? "已发布给指定学员"
-                  : "已保存草稿，仅教练可见"
-                : "保存成功"),
+                  ? t("已发布给指定学员")
+                  : t("已保存草稿，仅教练可见")
+                : t("保存成功")),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1079,48 +1133,67 @@ export default function Studio() {
       setDialog({
         alternate: coach
           ? {
-              label: existing ? "＋ 新增时间并改期" : "＋ 新增时间并直接预约",
+              label: existing
+                ? t("＋ 新增时间并改期")
+                : t("＋ 新增时间并直接预约"),
               action: (selected) => bookNewTime(selected || member, existing),
             }
           : undefined,
         title: existing
-          ? "调整预约时间"
+          ? t("调整预约时间")
           : coach
-            ? "为学员预约"
-            : "预约下一次训练",
-        description: `${existing ? `当前预约：${displayTime(existing.slots.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(existing.slots.ends_at, zone, "HH:mm")}。请选择新的训练时间。` : "请选择训练时间。"} 所有课程时间均为 ${zone}。${!coach ? `\n${changeReminder}${existing ? "" : `\n${attendanceReminder}`}` : ""}`,
+            ? t("为学员预约")
+            : t("预约下一次训练"),
+        description: t("{0} 所有课程时间均为 {1}。{2}", [
+          existing
+            ? t("当前预约：{0} – {1}。请选择新的训练时间。", [
+                displayTime(
+                  existing.slots.starts_at,
+                  zone,
+                  t("yyyy年MM月dd日 EEE HH:mm"),
+                ),
+                displayTime(existing.slots.ends_at, zone, "HH:mm"),
+              ])
+            : t("请选择训练时间。"),
+          zone,
+          !coach
+            ? `\n${t(changeReminder)}${existing ? "" : `\n${t(attendanceReminder)}`}`
+            : "",
+        ]),
         fields: [
           ...(coach && !existing ? [memberField(member)] : []),
           {
             name: "p_slot",
-            label: "训练时间",
+            label: t("训练时间"),
             type: "slots",
             required: true,
             value: existing ? "" : slot?.id || "",
             hint: coach
               ? existing
-                ? "暂无其他可预约时段，请先在教练时间表添加时间。"
-                : "暂无已开放时段，可点击上方选项直接新增时间并预约。"
-              : "教练暂未开放其他可预约时段。请联系教练增加时间后重试；当前预约保持不变。",
+                ? t("暂无其他可预约时段，请先在教练时间表添加时间。")
+                : t("暂无已开放时段，可点击上方选项直接新增时间并预约。")
+              : t(
+                  "教练暂未开放其他可预约时段。请联系教练增加时间后重试；当前预约保持不变。",
+                ),
             options: available.map((s) => ({
               value: s.id,
-              label: `${displayTime(s.starts_at, zone, "yyyy年MM月dd日 EEE HH:mm")} – ${displayTime(s.ends_at, zone, "HH:mm")}`,
+              label: `${displayTime(s.starts_at, zone, t("yyyy年MM月dd日 EEE HH:mm"))} – ${displayTime(s.ends_at, zone, "HH:mm")}`,
             })),
           },
           {
             name: "p_message",
             label: existing
-              ? "改期原因（选填）"
+              ? t("改期原因（选填）")
               : coach
-                ? "预约备注（学员可见，选填）"
-                : "给教练的留言（选填）",
+                ? t("预约备注（学员可见，选填）")
+                : t("给教练的留言（选填）"),
             type: "textarea",
           },
         ],
-        submit: existing ? "确认改期" : "确认预约",
+        submit: existing ? t("确认改期") : t("确认预约"),
         action: async (v) => {
           if (!available.some((s) => s.id === v.p_slot))
-            throw new Error("请选择一个可预约的训练时间。");
+            throw new Error(t("请选择一个可预约的训练时间。"));
           await mutate("manage_booking", {
             p_action: existing ? "reschedule" : "book",
             p_slot: v.p_slot,
@@ -1132,7 +1205,7 @@ export default function Studio() {
       });
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : "暂时无法获取可预约时段，请重试。",
+        e instanceof Error ? e.message : t("暂时无法获取可预约时段，请重试。"),
       );
     } finally {
       setBusy(false);
@@ -1140,12 +1213,16 @@ export default function Studio() {
   }
   function cancelBooking(b: Appointment) {
     setDialog({
-      title: "取消这次预约",
-      description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。取消后，这个时间将重新开放。${!coach ? `\n${changeReminder}` : ""}`,
+      title: t("取消这次预约"),
+      description: t("{0} · {1}。取消后，这个时间将重新开放。{2}", [
+        name(b.member_id),
+        displayTime(b.slots.starts_at, zone),
+        !coach ? `\n${t(changeReminder)}` : "",
+      ]),
       fields: [
-        { name: "p_message", label: "取消原因（选填）", type: "textarea" },
+        { name: "p_message", label: t("取消原因（选填）"), type: "textarea" },
       ],
-      submit: "确认取消",
+      submit: t("确认取消"),
       action: (v) =>
         mutate("manage_booking", {
           p_action: "cancel",
@@ -1161,16 +1238,28 @@ export default function Studio() {
       displayTime(b.slots.starts_at, zone, "yyyy-MM-dd"),
     );
     setDialog({
-      title: "确认未到场（No show）",
-      description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${monthly ? "此课程在包月有效期内，只记录缺席，不扣按次课时。" : `确认后扣除 1 节按次课时，预计余额 ${memberSessionStats(data, b.member_id).balance - 1} 节。余额不足也会扣课，请核对是否遗漏购课。`}不计入已完成次数和训练时长。保存后不可重复结算；如扣课有误，可在课时账户中调整并保留原因。`,
+      title: t("确认未到场（No show）"),
+      description: t(
+        "{0} · {1}。{2}不计入已完成次数和训练时长。保存后不可重复结算；如扣课有误，可在课时账户中调整并保留原因。",
+        [
+          name(b.member_id),
+          displayTime(b.slots.starts_at, zone),
+          monthly
+            ? t("此课程在包月有效期内，只记录缺席，不扣按次课时。")
+            : t(
+                "确认后扣除 1 节按次课时，预计余额 {0} 节。余额不足也会扣课，请核对是否遗漏购课。",
+                [memberSessionStats(data, b.member_id).balance - 1],
+              ),
+        ],
+      ),
       fields: [
         {
           name: "p_message",
-          label: "缺席备注（选填，学员可见）",
+          label: t("缺席备注（选填，学员可见）"),
           type: "textarea",
         },
       ],
-      submit: monthly ? "确认缺席 · 不扣课" : "确认缺席并扣 1 节",
+      submit: monthly ? t("确认缺席 · 不扣课") : t("确认缺席并扣 1 节"),
       action: (v) =>
         mutate("manage_booking", {
           p_action: "no_show",
@@ -1181,29 +1270,36 @@ export default function Studio() {
   }
   function bookNewTime(member?: string, existing?: Appointment) {
     setDialog({
-      title: existing ? "新增时间并改期" : "新增时间并预约",
-      description: `按 ${zone} 输入时间。${existing ? `为 ${name(existing.member_id)} 改期，保留原预约记录和历史。` : "保存后同时新增时段并为学员预约。"}`,
+      title: existing ? t("新增时间并改期") : t("新增时间并预约"),
+      description: t("按 {0} 输入时间。{1}", [
+        zone,
+        existing
+          ? t("为 {0} 改期，保留原预约记录和历史。", [name(existing.member_id)])
+          : t("保存后同时新增时段并为学员预约。"),
+      ]),
       fields: [
         ...(!existing ? [memberField(member)] : []),
         {
           name: "start",
-          label: "开始时间",
+          label: t("开始时间"),
           type: "datetime-local",
           required: true,
         },
         {
           name: "end",
-          label: "结束时间",
+          label: t("结束时间"),
           type: "datetime-local",
           required: true,
         },
         {
           name: "p_message",
-          label: existing ? "改期原因（选填）" : "预约备注（学员可见，选填）",
+          label: existing
+            ? t("改期原因（选填）")
+            : t("预约备注（学员可见，选填）"),
           type: "textarea",
         },
       ],
-      submit: existing ? "新增并改期" : "新增并预约",
+      submit: existing ? t("新增并改期") : t("新增并预约"),
       action: async (v) => {
         const start = localToISO(v.start, zone),
           end = localToISO(v.end, zone);
@@ -1212,7 +1308,7 @@ export default function Studio() {
           end <= start ||
           Date.parse(end) - Date.parse(start) > 14400000
         )
-          throw new Error("请选择未来的有效时段（最长 4 小时）");
+          throw new Error(t("请选择未来的有效时段（最长 4 小时）"));
         if (
           data.slots.some(
             (s) =>
@@ -1221,7 +1317,7 @@ export default function Studio() {
               s.ends_at > start,
           )
         )
-          throw new Error("时间段与现有安排重叠，请选择已有时段或调整时间");
+          throw new Error(t("时间段与现有安排重叠，请选择已有时段或调整时间"));
         await mutate(existing ? "reschedule_new_slot" : "book_new_slot", {
           ...(existing
             ? { p_appointment: existing.id }
@@ -1235,23 +1331,23 @@ export default function Studio() {
   }
   function addSlot() {
     setDialog({
-      title: "开放可预约时间",
-      description: `按 ${zone} 输入时间。每个时段可预约一位学员。`,
+      title: t("开放可预约时间"),
+      description: t("按 {0} 输入时间。每个时段可预约一位学员。", [zone]),
       fields: [
         {
           name: "start",
-          label: "开始时间",
+          label: t("开始时间"),
           type: "datetime-local",
           required: true,
         },
         {
           name: "end",
-          label: "结束时间",
+          label: t("结束时间"),
           type: "datetime-local",
           required: true,
         },
       ],
-      submit: "开放时段",
+      submit: t("开放时段"),
       action: async (v) => {
         const start = localToISO(v.start, zone),
           end = localToISO(v.end, zone);
@@ -1260,36 +1356,39 @@ export default function Studio() {
           end <= start ||
           new Date(end).getTime() - new Date(start).getTime() > 14400000
         )
-          throw new Error("请选择未来的有效时段（最长 4 小时）");
+          throw new Error(t("请选择未来的有效时段（最长 4 小时）"));
         if (data.slots.some((s) => s.starts_at < end && s.ends_at > start))
-          throw new Error("时间段与现有安排重叠");
+          throw new Error(t("时间段与现有安排重叠"));
         await mutate("save_slot", { p_start: start, p_end: end });
       },
     });
   }
   function editPlan(plan?: Plan, member?: string) {
     setDialog({
-      title: plan ? "编辑训练计划" : "制定专属训练计划",
+      title: plan ? t("编辑训练计划") : t("制定专属训练计划"),
       publication: true,
-      submit: plan?.status === "published" ? "更新并发布" : "发布给学员",
+      submit: plan?.status === "published" ? t("更新并发布") : t("发布给学员"),
       description: plan
-        ? `归属学员：${name(plan.member_id)}。保存草稿仅教练可见；发布后学员可见并收到通知。已发布内容保存为草稿后将对学员隐藏。`
-        : "每份计划仅对指定学员开放。发布新计划后，旧计划自动归档。",
+        ? t(
+            "归属学员：{0}。保存草稿仅教练可见；发布后学员可见并收到通知。已发布内容保存为草稿后将对学员隐藏。",
+            [name(plan.member_id)],
+          )
+        : t("每份计划仅对指定学员开放。发布新计划后，旧计划自动归档。"),
       fields: [
         ...(!plan ? [memberField(member)] : []),
         {
           name: "p_title",
-          label: "计划名称",
+          label: t("计划名称"),
           value: plan?.title,
           required: true,
         },
         {
           name: "p_content",
-          label: "训练内容",
+          label: t("训练内容"),
           type: "textarea",
           value: plan?.content,
           required: true,
-          hint: "可按训练日填写动作、组数、次数、休息时间和注意事项。",
+          hint: t("可按训练日填写动作、组数、次数、休息时间和注意事项。"),
         },
       ],
       action: (v) =>
@@ -1304,17 +1403,20 @@ export default function Studio() {
   }
   function editRecord(record?: RecordEntry, member?: string, date?: string) {
     setDialog({
-      title: record ? "编辑训练档案" : "添加训练档案",
+      title: record ? t("编辑训练档案") : t("添加训练档案"),
       publication: true,
-      submit: record?.shared ? "更新并发布" : "发布给学员",
+      submit: record?.shared ? t("更新并发布") : t("发布给学员"),
       description: record
-        ? `归属学员：${name(record.member_id)}。保存草稿仅教练可见，发布后只有这位学员可见。已发布内容保存为草稿后将对学员隐藏。`
-        : "保存草稿仅教练可见；发布后只有指定学员可见。",
+        ? t(
+            "归属学员：{0}。保存草稿仅教练可见，发布后只有这位学员可见。已发布内容保存为草稿后将对学员隐藏。",
+            [name(record.member_id)],
+          )
+        : t("保存草稿仅教练可见；发布后只有指定学员可见。"),
       fields: [
         ...(!record ? [memberField(member)] : []),
         {
           name: "p_date",
-          label: "记录日期",
+          label: t("记录日期"),
           type: "date",
           value:
             record?.recorded_on ||
@@ -1324,7 +1426,7 @@ export default function Studio() {
         },
         {
           name: "p_weight",
-          label: "体重 / lb（磅，选填）",
+          label: t("体重 / lb（磅，选填）"),
           type: "number",
           value: kgToLb(record?.weight) ?? "",
           min: 1,
@@ -1333,7 +1435,7 @@ export default function Studio() {
         },
         {
           name: "p_fat",
-          label: "体脂率 / %（选填）",
+          label: t("体脂率 / %（选填）"),
           type: "number",
           value: record?.body_fat ?? "",
           min: 0,
@@ -1341,14 +1443,14 @@ export default function Studio() {
         },
         {
           name: "p_notes",
-          label: "训练内容、表现、身体不适及下次重点",
+          label: t("训练内容、表现、身体不适及下次重点"),
           type: "textarea",
           value: record?.notes,
         },
       ],
       optionalFields: measurementFields.map((f) => ({
         name: f.key,
-        label: `${f.label} / ${f.unit}`,
+        label: `${t(f.label)} / ${t(f.unit)}`,
         type: "number",
         value: record?.measurements?.[f.key] ?? "",
         min: f.min,
@@ -1374,12 +1476,12 @@ export default function Studio() {
     deleted: boolean,
   ) {
     setDialog({
-      title: deleted ? "删除这份内容" : "恢复为草稿",
+      title: deleted ? t("删除这份内容") : t("恢复为草稿"),
       description: deleted
-        ? "删除后学员将无法查看，可在「已删除」中恢复为草稿。"
-        : "恢复后只有教练可见，需要再次发布才会对学员显示。",
+        ? t("删除后学员将无法查看，可在「已删除」中恢复为草稿。")
+        : t("恢复后只有教练可见，需要再次发布才会对学员显示。"),
       fields: [],
-      submit: deleted ? "确认删除" : "恢复为草稿",
+      submit: deleted ? t("确认删除") : t("恢复为草稿"),
       action: () =>
         mutate("set_training_deleted", {
           p_kind: kind,
@@ -1392,7 +1494,7 @@ export default function Studio() {
     return [
       {
         name: "p_amount",
-        label: "本次金额记录（选填，不会发起扣款）",
+        label: t("本次金额记录（选填，不会发起扣款）"),
         type: "number",
         min: 0,
         max: 999999.99,
@@ -1400,7 +1502,7 @@ export default function Studio() {
       },
       {
         name: "p_currency",
-        label: "币种",
+        label: t("币种"),
         type: "select",
         required: true,
         value:
@@ -1416,14 +1518,18 @@ export default function Studio() {
   function recordCredit(memberId: string, adjustment = false) {
     const request = crypto.randomUUID();
     setDialog({
-      title: `${adjustment ? "调整课时" : "录入购课"} · ${name(memberId)}`,
+      title: `${adjustment ? t("调整课时") : t("录入购课")} · ${name(memberId)}`,
       description: adjustment
-        ? "期初余课、补课、退课或纠错请在这里录入。正数增加，负数扣减；必须说明原因，学员可以查看。不改动历史上课次数。"
-        : "录入本次购买的课次数量，例如 3 节。只做课时与金额记录，不会发起支付；旧课程不会补扣。",
+        ? t(
+            "期初余课、补课、退课或纠错请在这里录入。正数增加，负数扣减；必须说明原因，学员可以查看。不改动历史上课次数。",
+          )
+        : t(
+            "录入本次购买的课次数量，例如 3 节。只做课时与金额记录，不会发起支付；旧课程不会补扣。",
+          ),
       fields: [
         {
           name: "p_quantity",
-          label: adjustment ? "课时增减（如 +2 或 -1）" : "购买课次数",
+          label: adjustment ? t("课时增减（如 +2 或 -1）") : t("购买课次数"),
           type: "number",
           required: true,
           min: adjustment ? -10000 : 1,
@@ -1434,13 +1540,13 @@ export default function Studio() {
         ...(!adjustment ? creditFields(memberId) : []),
         {
           name: "p_note",
-          label: "说明 / 原因（学员可见）",
+          label: t("说明 / 原因（学员可见）"),
           type: "textarea",
           required: true,
         },
       ],
-      submit: adjustment ? "确认调整" : "确认入账",
-      success: "课时已入账，可在流水中查看",
+      submit: adjustment ? t("确认调整") : t("确认入账"),
+      success: t("课时已入账，可在流水中查看"),
       action: async (v) => {
         validateCredit(
           Number(v.p_quantity),
@@ -1463,19 +1569,22 @@ export default function Studio() {
     const request = crypto.randomUUID();
     const start = displayTime(new Date().toISOString(), zone, "yyyy-MM-dd");
     setDialog({
-      title: `录入包月 · ${name(memberId)}`,
-      description: `按 ${zone} 记录有效期，含开始和结束日。有效期内不限次数；以后确认完成的课程按上课日期判断是否属于包月。不会回改已经扣课的流水，如有误请另作课时调整。不会发起支付。`,
+      title: t("录入包月 · {0}", [name(memberId)]),
+      description: t(
+        "按 {0} 记录有效期，含开始和结束日。有效期内不限次数；以后确认完成的课程按上课日期判断是否属于包月。不会回改已经扣课的流水，如有误请另作课时调整。不会发起支付。",
+        [zone],
+      ),
       fields: [
         {
           name: "p_start",
-          label: "开始日期",
+          label: t("开始日期"),
           type: "date",
           required: true,
           value: start,
         },
         {
           name: "p_end",
-          label: "结束日期（含当天）",
+          label: t("结束日期（含当天）"),
           type: "date",
           required: true,
           value: defaultMonthlyEnd(start),
@@ -1483,13 +1592,13 @@ export default function Studio() {
         ...creditFields(memberId),
         {
           name: "p_note",
-          label: "包月说明（学员可见）",
+          label: t("包月说明（学员可见）"),
           type: "textarea",
           required: true,
         },
       ],
-      submit: "确认录入包月",
-      success: "包月已录入",
+      submit: t("确认录入包月"),
+      success: t("包月已录入"),
       action: async (v) => {
         if (
           !v.p_start ||
@@ -1497,7 +1606,7 @@ export default function Studio() {
           v.p_end < v.p_start ||
           (Date.parse(v.p_end) - Date.parse(v.p_start)) / 86400000 > 366
         )
-          throw new Error("请选择有效日期，最长 366 天");
+          throw new Error(t("请选择有效日期，最长 366 天"));
         if (
           data.monthly_memberships.some(
             (m) =>
@@ -1507,7 +1616,7 @@ export default function Studio() {
               m.ends_on >= v.p_start,
           )
         )
-          throw new Error("有效期与已有包月重叠，请核对日期");
+          throw new Error(t("有效期与已有包月重叠，请核对日期"));
         await mutate("record_monthly_membership", {
           p_id: request,
           p_member: memberId,
@@ -1522,17 +1631,20 @@ export default function Studio() {
   }
   function cancelMonthly(m: MonthlyMembership) {
     setDialog({
-      title: `作废包月 · ${name(m.member_id)}`,
-      description: `${m.starts_on} 至 ${m.ends_on}。作废后保留原始记录，不再覆盖之后确认完成的课程，也不会重算已完成课程或自动退款。录错可作废后重新录入。`,
+      title: t("作废包月 · {0}", [name(m.member_id)]),
+      description: t(
+        "{0} 至 {1}。作废后保留原始记录，不再覆盖之后确认完成的课程，也不会重算已完成课程或自动退款。录错可作废后重新录入。",
+        [m.starts_on, m.ends_on],
+      ),
       fields: [
         {
           name: "p_reason",
-          label: "作废原因（学员可见）",
+          label: t("作废原因（学员可见）"),
           type: "textarea",
           required: true,
         },
       ],
-      submit: "确认作废",
+      submit: t("确认作废"),
       action: (v) =>
         mutate("cancel_monthly_membership", {
           p_id: m.id,
@@ -1543,14 +1655,15 @@ export default function Studio() {
   function editMemberPrice(memberId: string) {
     const price = data.member_prices.find((p) => p.member_id === memberId);
     setDialog({
-      title: `设置 ${name(memberId)} 的专属价格`,
-      description:
+      title: t("设置 {0} 的专属价格", [name(memberId)]),
+      description: t(
         "只有你和这位学员能看到。1、3、12 个月均不限次数，填写整个周期总金额；留空表示尚未设置。保存价格不会发起收款。",
-      submit: "保存专属价格",
+      ),
+      submit: t("保存专属价格"),
       fields: [
         {
           name: "single",
-          label: "单次训练金额",
+          label: t("单次训练金额"),
           type: "number",
           value: price?.single_price ?? "",
           min: 0,
@@ -1559,7 +1672,7 @@ export default function Studio() {
         },
         {
           name: "monthly",
-          label: "包月金额（不限次数）",
+          label: t("包月金额（不限次数）"),
           type: "number",
           value: price?.monthly_price ?? "",
           min: 0,
@@ -1568,7 +1681,7 @@ export default function Studio() {
         },
         {
           name: "quarterly",
-          label: "3 个月套餐总金额（不限次数）",
+          label: t("3 个月套餐总金额（不限次数）"),
           type: "number",
           value: price?.quarterly_price ?? "",
           min: 0,
@@ -1577,7 +1690,7 @@ export default function Studio() {
         },
         {
           name: "annual",
-          label: "12 个月套餐总金额（不限次数）",
+          label: t("12 个月套餐总金额（不限次数）"),
           type: "number",
           value: price?.annual_price ?? "",
           min: 0,
@@ -1586,7 +1699,7 @@ export default function Studio() {
         },
         {
           name: "currency",
-          label: "币种",
+          label: t("币种"),
           type: "select",
           value: price?.currency || "USD",
           required: true,
@@ -1609,13 +1722,13 @@ export default function Studio() {
   }
   function createInvite() {
     setDialog({
-      title: "生成专属邀请码",
-      description: "可以限定注册邮箱，或创建允许多人使用的邀请码。",
+      title: t("生成专属邀请码"),
+      description: t("可以限定注册邮箱，或创建允许多人使用的邀请码。"),
       fields: [
-        { name: "p_email", label: "限定邮箱（选填）", type: "email" },
+        { name: "p_email", label: t("限定邮箱（选填）"), type: "email" },
         {
           name: "p_max_uses",
-          label: "最多使用次数",
+          label: t("最多使用次数"),
           type: "number",
           value: 1,
           min: 1,
@@ -1625,7 +1738,7 @@ export default function Studio() {
         },
         {
           name: "p_days",
-          label: "有效天数",
+          label: t("有效天数"),
           type: "number",
           value: 30,
           min: 1,
@@ -1634,7 +1747,7 @@ export default function Studio() {
           required: true,
         },
       ],
-      submit: "生成邀请码",
+      submit: t("生成邀请码"),
       action: (v) =>
         mutate("create_invite", {
           p_email: v.p_email || null,
@@ -1646,14 +1759,14 @@ export default function Studio() {
   async function copy(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      notify("已复制");
+      notify(t("已复制"));
     } catch {
-      setError("复制失败，请手动选择并复制。");
+      setError(t("复制失败，请手动选择并复制。"));
     }
   }
   function exportReferrals() {
     const rows = [
-      ["推荐人", "新学员", "状态", "注册时间", "成功时间"],
+      [t("推荐人"), t("新学员"), t("状态"), t("注册时间"), t("成功时间")],
       ...data.referrals
         .filter(
           (r) =>
@@ -1663,7 +1776,7 @@ export default function Studio() {
         )
         .map((r) => [
           name(r.referrer_id),
-          coach ? name(r.referred_id) : "新学员",
+          coach ? name(r.referred_id) : t("新学员"),
           statusNames[r.status],
           r.created_at,
           r.confirmed_at || "",
@@ -1677,7 +1790,7 @@ export default function Studio() {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = "Yvonne-Fitness-推荐记录.csv";
+    a.download = t("Yvonne-Fitness-推荐记录.csv");
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1702,7 +1815,7 @@ export default function Studio() {
   async function authSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!supabase) {
-      setError("请先按部署说明连接 Supabase。演示模式不创建真实账号。");
+      setError(t("请先按部署说明连接 Supabase。演示模式不创建真实账号。"));
       return;
     }
     const f = Object.fromEntries(new FormData(e.currentTarget));
@@ -1716,9 +1829,9 @@ export default function Studio() {
         (authMode === "register" || authMode === "password") &&
         password !== String(f.confirm_password || "")
       )
-        throw new Error("两次输入的密码不一致");
+        throw new Error(t("两次输入的密码不一致"));
       if (authMode === "register") {
-        if (!String(f.full_name || "").trim()) throw new Error("请填写姓名");
+        if (!String(f.full_name || "").trim()) throw new Error(t("请填写姓名"));
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -1726,6 +1839,7 @@ export default function Studio() {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
             data: {
               full_name: String(f.full_name || "").trim(),
+              language: preference,
               invite_code: String(f.invite_code || "").trim(),
               referral_code: String(f.referral_code || "").trim(),
             },
@@ -1733,7 +1847,9 @@ export default function Studio() {
         });
         if (error) throw error;
         setAuthHint(
-          "请查收验证邮件，并在发起注册的同一个浏览器中打开链接。如果没有收到，请检查垃圾邮件或联系教练确认邀请码。",
+          t(
+            "请查收验证邮件，并在发起注册的同一个浏览器中打开链接。如果没有收到，请检查垃圾邮件或联系教练确认邀请码。",
+          ),
         );
       }
       if (authMode === "login") {
@@ -1750,7 +1866,9 @@ export default function Studio() {
         });
         if (error) throw error;
         setAuthHint(
-          "如果该邮箱已注册，你会收到密码重置邮件。请在当前浏览器中打开邮件链接。",
+          t(
+            "如果该邮箱已注册，你会收到密码重置邮件。请在当前浏览器中打开邮件链接。",
+          ),
         );
       }
       if (authMode === "password") {
@@ -1758,16 +1876,18 @@ export default function Studio() {
         if (error) throw error;
         setShowAuth(false);
         setAuthMode("login");
-        notify("密码已更新");
+        notify(t("密码已更新"));
         window.history.replaceState({}, "", "/");
       }
     } catch (e) {
       const message = (e as Error).message;
       setError(
         message.includes("Database error")
-          ? "注册未完成：请检查邀请码、绑定邮箱、有效期及剩余次数；仍失败时请教练检查数据库日志。"
+          ? t(
+              "注册未完成：请检查邀请码、绑定邮箱、有效期及剩余次数；仍失败时请教练检查数据库日志。",
+            )
           : message === "Invalid login credentials"
-            ? "邮箱或密码不正确"
+            ? t("邮箱或密码不正确")
             : message,
       );
     } finally {
@@ -1779,13 +1899,13 @@ export default function Studio() {
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={19} />
-          {toast}
+          {t(toast)}
         </div>
       )}
       {error && !dialog && !showAuth && (demo || session) && (
         <div className="error-toast" role="alert">
-          <span>{error}</span>
-          <button onClick={() => setError("")} aria-label="关闭提示">
+          <span>{t(error)}</span>
+          <button onClick={() => setError("")} aria-label={t("关闭提示")}>
             <X size={18} />
           </button>
         </div>
@@ -1796,7 +1916,7 @@ export default function Studio() {
     return (
       <div className="loading">
         <Dumbbell size={38} />
-        <p>正在打开你的训练空间…</p>
+        <p>{t("正在打开你的训练空间…")}</p>
         {flash}
       </div>
     );
@@ -1819,49 +1939,55 @@ export default function Studio() {
           <div>
             <span className="eyebrow">YOUR SPACE TO GROW</span>
             <h1>
-              每一次训练，
+              {t("每一次训练，")}
               <br />
-              更靠近自己。
+              {t("更靠近自己。")}
             </h1>
             <p>
-              预约你的专属时间，跟随自己的节奏。
+              {t("预约你的专属时间，跟随自己的节奏。")}
               <br />
-              与教练一起，把进步变成日常。
+              {t("与教练一起，把进步变成日常。")}
             </p>
             <div className="auth-line" />
             <span className="auth-caption">
-              专属计划 · 一对一训练 · 持续进步
+              {t("专属计划 · 一对一训练 · 持续进步")}
             </span>
           </div>
           <p className="auth-foot">YVONNE FITNESS / MEMBER STUDIO</p>
         </section>
         <section className="auth-form">
           <div className="auth-box">
+            <div className="auth-language">
+              <LanguageSelect
+                onChange={changeLanguage}
+                disabled={languageBusy || busy}
+              />
+            </div>
             <span className="eyebrow">WELCOME TO YOUR STUDIO</span>
             <h2>
               {
                 {
-                  login: "欢迎回来",
-                  register: "开启你的训练旅程",
-                  reset: "找回密码",
-                  password: "设置新密码",
+                  login: t("欢迎回来"),
+                  register: t("开启你的训练旅程"),
+                  reset: t("找回密码"),
+                  password: t("设置新密码"),
                 }[authMode]
               }
             </h2>
             <p className="muted">
               {authMode === "register"
-                ? "仅接受邀请注册。请输入教练邀请码或学员推荐码。"
-                : "你的训练安排，都在这里。"}
+                ? t("仅接受邀请注册。请输入教练邀请码或学员推荐码。")
+                : t("你的训练安排，都在这里。")}
             </p>
             {error && (
               <p className="inline-error" role="alert">
-                {error}
+                {t(error)}
               </p>
             )}
             <form key={authMode} onSubmit={authSubmit}>
               {authMode === "register" && (
                 <label className="field">
-                  姓名
+                  {t("姓名")}
                   <input
                     name="full_name"
                     required
@@ -1872,7 +1998,7 @@ export default function Studio() {
               )}
               {authMode !== "password" && (
                 <label className="field">
-                  邮箱
+                  {t("邮箱")}
                   <input
                     name="email"
                     type="email"
@@ -1883,7 +2009,7 @@ export default function Studio() {
               )}
               {authMode !== "reset" && (
                 <label className="field">
-                  密码
+                  {t("密码")}
                   <input
                     name="password"
                     type="password"
@@ -1892,13 +2018,13 @@ export default function Studio() {
                     autoComplete={
                       authMode === "login" ? "current-password" : "new-password"
                     }
-                    placeholder="至少 8 位字符"
+                    placeholder={t("至少 8 位字符")}
                   />
                 </label>
               )}
               {(authMode === "register" || authMode === "password") && (
                 <label className="field">
-                  确认密码
+                  {t("确认密码")}
                   <input
                     name="confirm_password"
                     type="password"
@@ -1911,7 +2037,7 @@ export default function Studio() {
               {authMode === "register" && (
                 <>
                   <label className="field">
-                    邀请码 / 学员推荐码
+                    {t("邀请码 / 学员推荐码")}
                     <input
                       name="invite_code"
                       required
@@ -1920,31 +2046,33 @@ export default function Studio() {
                     />
                   </label>
                   <label className="field">
-                    推荐码（选填）
+                    {t("推荐码（选填）")}
                     <input
                       name="referral_code"
                       defaultValue={ref.get("ref") || ""}
                       maxLength={128}
                     />
                     <small>
-                      使用教练邀请码注册时，可在这里另外填写推荐人的代码。
+                      {t(
+                        "使用教练邀请码注册时，可在这里另外填写推荐人的代码。",
+                      )}
                     </small>
                   </label>
                 </>
               )}
               <button className="btn full" disabled={busy}>
                 {busy
-                  ? "请稍候…"
+                  ? t("请稍候…")
                   : {
-                      login: "登录",
-                      register: "创建账号",
-                      reset: "发送重置邮件",
-                      password: "保存新密码",
+                      login: t("登录"),
+                      register: t("创建账号"),
+                      reset: t("发送重置邮件"),
+                      password: t("保存新密码"),
                     }[authMode]}
                 <ArrowRight size={18} />
               </button>
             </form>
-            {authHint && <p className="success-box">{authHint}</p>}
+            {authHint && <p className="success-box">{t(authHint)}</p>}
             <div className="auth-links">
               <button
                 disabled={busy}
@@ -1954,25 +2082,28 @@ export default function Studio() {
                   );
                 }}
               >
-                {authMode === "register" ? "已有账号？登录" : "有邀请码？注册"}
+                {authMode === "register"
+                  ? t("已有账号？登录")
+                  : t("有邀请码？注册")}
               </button>
               {authMode === "login" && (
                 <button disabled={busy} onClick={() => changeAuthMode("reset")}>
-                  忘记密码
+                  {t("忘记密码")}
                 </button>
               )}
               {authMode === "reset" && (
                 <button disabled={busy} onClick={() => changeAuthMode("login")}>
-                  返回登录
+                  {t("返回登录")}
                 </button>
               )}
             </div>
             {!configured && (
               <div className="setup-note">
-                <strong>外部平台尚未连接</strong>
+                <strong>{t("外部平台尚未连接")}</strong>
                 <p>
-                  可以先预览页面。真实注册、预约和邮件将在连接 Supabase 和
-                  Resend 后启用。
+                  {t(
+                    "可以先预览页面。真实注册、预约和邮件将在连接 Supabase 和 Resend 后启用。",
+                  )}
                 </p>
                 <button
                   className="btn secondary full"
@@ -1981,7 +2112,7 @@ export default function Studio() {
                     setShowAuth(false);
                   }}
                 >
-                  查看网站演示
+                  {t("查看网站演示")}
                 </button>
               </div>
             )}
@@ -1995,20 +2126,20 @@ export default function Studio() {
     return (
       <div className="loading">
         <ShieldCheck size={36} />
-        <h2>{current ? "账号已停用" : "无法读取个人资料"}</h2>
+        <h2>{current ? t("账号已停用") : t("无法读取个人资料")}</h2>
         <p>
           {current
-            ? "请联系教练恢复账号。"
+            ? t("请联系教练恢复账号。")
             : loadError ||
-              "个人资料暂时不可用，请重新加载；仍有问题时联系教练。"}
+              t("个人资料暂时不可用，请重新加载；仍有问题时联系教练。")}
         </p>
         {!current && (
           <button className="btn" disabled={busy} onClick={retryLoad}>
-            重新加载
+            {t("重新加载")}
           </button>
         )}
         <button className="btn secondary" disabled={busy} onClick={signOut}>
-          退出登录
+          {t("退出登录")}
         </button>
         {flash}
       </div>
@@ -2069,7 +2200,7 @@ export default function Studio() {
   };
   const bookingCards = (
     items: Appointment[],
-    emptyText = "还没有课程安排",
+    emptyText = t("还没有课程安排"),
     showBookingAction = true,
   ) =>
     items.length ? (
@@ -2077,7 +2208,7 @@ export default function Studio() {
         <Paginated
           items={items}
           resetKey={[tab, filter, memberFilter, query, current.id]}
-          label="预约"
+          label={t("预约")}
         >
           {(pageItems, pageOffset) =>
             pageItems.map((b) => (
@@ -2090,15 +2221,15 @@ export default function Studio() {
                 </div>
                 <div className="booking-main">
                   <div className="row gap">
-                    <h3>{coach ? name(b.member_id) : "一对一私教训练"}</h3>
+                    <h3>{coach ? name(b.member_id) : t("一对一私教训练")}</h3>
                     <Badge
                       value={
                         b.status === "booked" &&
                         Date.parse(b.slots.ends_at) <= Date.now()
-                          ? "待确认结果"
+                          ? t("待确认结果")
                           : b.status === "booked" &&
                               Date.parse(b.slots.starts_at) <= Date.now()
-                            ? "进行中"
+                            ? t("进行中")
                             : b.status
                       }
                     />
@@ -2110,10 +2241,17 @@ export default function Studio() {
                     <span className="separator">·</span>
                     {data.settings.location}
                   </p>
-                  {b.message && <small>预约留言：{b.message}</small>}
+                  {b.message && (
+                    <small>
+                      {t("预约留言：")}
+                      {b.message}
+                    </small>
+                  )}
                   {b.reason && (
                     <small>
-                      {b.status === "no_show" ? "缺席备注：" : "最近变更原因："}
+                      {b.status === "no_show"
+                        ? t("缺席备注：")
+                        : t("最近变更原因：")}
                       {b.reason}
                     </small>
                   )}
@@ -2121,8 +2259,8 @@ export default function Studio() {
                     <small>
                       {data.session_entries.find(
                         (e) => e.appointment_id === b.id,
-                      )?.note || "已记录缺席"}{" "}
-                      · 不计入完成训练
+                      )?.note || t("已记录缺席")}{" "}
+                      {t("· 不计入完成训练")}
                     </small>
                   )}
                 </div>
@@ -2142,7 +2280,7 @@ export default function Studio() {
                           )
                         }
                       >
-                        写记录
+                        {t("写记录")}
                       </button>
                     )}
                   {b.status === "booked" &&
@@ -2152,13 +2290,13 @@ export default function Studio() {
                           className="btn secondary small"
                           onClick={() => book(undefined, b)}
                         >
-                          改期
+                          {t("改期")}
                         </button>
                         <button
                           className="text-btn muted"
                           onClick={() => cancelBooking(b)}
                         >
-                          取消
+                          {t("取消")}
                         </button>
                       </>
                     )}
@@ -2169,10 +2307,10 @@ export default function Studio() {
                         className="btn small"
                         onClick={() =>
                           setDialog({
-                            title: "确认课程完成",
-                            description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? "此课程在包月有效期内，确认后记录上课次数，不扣按次课时。" : `确认后扣除 1 节按次课时，预计余额 ${memberSessionStats(data, b.member_id).balance - 1} 节。余额不足也会记录完成，请核对是否遗漏购课。`) : "课时账户尚未启用，本次仅记录课程完成。"}`,
+                            title: t("确认课程完成"),
+                            description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? t("此课程在包月有效期内，确认后记录上课次数，不扣按次课时。") : t("确认后扣除 1 节按次课时，预计余额 {0} 节。余额不足也会记录完成，请核对是否遗漏购课。", [memberSessionStats(data, b.member_id).balance - 1])) : t("课时账户尚未启用，本次仅记录课程完成。")}`,
                             fields: [],
-                            submit: "标记完成",
+                            submit: t("标记完成"),
                             action: () =>
                               mutate("manage_booking", {
                                 p_action: "complete",
@@ -2181,7 +2319,7 @@ export default function Studio() {
                           })
                         }
                       >
-                        标记完成
+                        {t("标记完成")}
                       </button>
                     )}
                   {coach &&
@@ -2192,14 +2330,14 @@ export default function Studio() {
                         className="btn secondary small"
                         onClick={() => markNoShow(b)}
                       >
-                        No show · 未到场
+                        {t("No show · 未到场")}
                       </button>
                     )}
                   <button
                     className="text-btn muted"
                     onClick={() => {
                       setDialog({
-                        title: "预约变更记录",
+                        title: t("预约变更记录"),
                         readOnly: true,
                         description:
                           data.events
@@ -2209,16 +2347,16 @@ export default function Studio() {
                             )
                             .map(
                               (e) =>
-                                `${displayTime(e.created_at, zone)} · ${actionNames[e.action]} · ${e.actor_id === current.id ? "我" : data.profiles.some((p) => p.id === e.actor_id) ? name(e.actor_id) : "教练"}${e.details.old_start ? " · 原时间 " + displayTime(e.details.old_start, zone) : ""}${e.details.new_start ? " → " + displayTime(e.details.new_start, zone) : ""}${e.message ? "\n" + e.message : ""}`,
+                                `${displayTime(e.created_at, zone)} · ${t(actionNames[e.action])} · ${e.actor_id === current.id ? t("我") : data.profiles.some((p) => p.id === e.actor_id) ? name(e.actor_id) : t("教练")}${e.details.old_start ? t(" · 原时间 ") + displayTime(e.details.old_start, zone) : ""}${e.details.new_start ? " → " + displayTime(e.details.new_start, zone) : ""}${e.message ? "\n" + e.message : ""}`,
                             )
-                            .join("\n\n") || "暂无变更记录",
+                            .join("\n\n") || t("暂无变更记录"),
                         fields: [],
-                        submit: "关闭",
+                        submit: t("关闭"),
                         action: async () => {},
                       });
                     }}
                   >
-                    详情
+                    {t("详情")}
                   </button>
                 </div>
               </article>
@@ -2235,7 +2373,7 @@ export default function Studio() {
               className="btn secondary"
               onClick={() => navigate("schedule")}
             >
-              查看可预约时间
+              {t("查看可预约时间")}
               <ArrowRight size={16} />
             </button>
           )
@@ -2274,7 +2412,7 @@ export default function Studio() {
                 className={tab === id ? "active" : ""}
               >
                 <Icon size={19} />
-                <span>{label}</span>
+                <span>{t(label)}</span>
                 {id === "bookings" && upcoming.length > 0 && (
                   <b>{upcoming.length}</b>
                 )}
@@ -2285,11 +2423,11 @@ export default function Studio() {
           <div className="sidebar-note">
             <ShieldCheck size={20} />
             <p>
-              专属的训练空间
+              {t("专属的训练空间")}
               <small>
                 {coach
-                  ? "每一位学员，都值得被认真对待。"
-                  : "你的计划与档案，仅你和教练可见。"}
+                  ? t("每一位学员，都值得被认真对待。")
+                  : t("你的计划与档案，仅你和教练可见。")}
               </small>
             </p>
           </div>
@@ -2297,7 +2435,7 @@ export default function Studio() {
             <Avatar name={current.full_name} />
             <span>
               {current.full_name}
-              <small>{coach ? "主教练 / 管理员" : "会员"}</small>
+              <small>{coach ? t("主教练 / 管理员") : t("会员")}</small>
             </span>
             <Settings2 size={17} />
           </button>
@@ -2306,7 +2444,7 @@ export default function Studio() {
       {menu && (
         <button
           className="backdrop"
-          aria-label="收起菜单"
+          aria-label={t("收起菜单")}
           onClick={() => setMenu(false)}
         />
       )}
@@ -2315,35 +2453,42 @@ export default function Studio() {
           <div className="row gap">
             <button
               className="icon-btn mobile-menu"
-              aria-label={menu ? "关闭菜单" : "打开菜单"}
+              aria-label={menu ? t("关闭菜单") : t("打开菜单")}
               aria-expanded={menu}
               onClick={() => setMenu(!menu)}
             >
               <Menu />
             </button>
             <span className="breadcrumb">
-              我的工作室 <ChevronRight size={14} />
+              {t("我的工作室")}
+              <ChevronRight size={14} />
               <strong>
                 {tab === "member"
-                  ? "学员看板"
-                  : tabs.find((t) => t[0] === tab)?.[1]}
+                  ? t("学员看板")
+                  : t(tabs.find((item) => item[0] === tab)?.[1])}
               </strong>
             </span>
           </div>
           <div className="row gap">
+            {!coach && (
+              <LanguageSelect
+                onChange={changeLanguage}
+                disabled={languageBusy || busy}
+              />
+            )}
             <span className="time-zone">
-              {zone === "America/Los_Angeles" ? "美西时间" : zone}
+              {zone === "America/Los_Angeles" ? t("美西时间") : zone}
             </span>
             <button
               className="icon-btn"
-              aria-label="通知设置"
+              aria-label={t("通知设置")}
               onClick={() => navigate("settings")}
             >
               <Bell size={19} />
             </button>
             <button
               className="icon-btn"
-              aria-label="退出登录"
+              aria-label={t("退出登录")}
               disabled={busy}
               onClick={signOut}
             >
@@ -2355,8 +2500,8 @@ export default function Studio() {
         {demo && (
           <div className="demo-banner">
             <span>
-              <strong>演示预览</strong> ·
-              示例数据，刷新后恢复；尚未连接真实账号和邮件。
+              <strong>{t("演示预览")}</strong>{" "}
+              {t("· 示例数据，刷新后恢复；尚未连接真实账号和邮件。")}
             </span>
             <button
               onClick={() => {
@@ -2364,20 +2509,23 @@ export default function Studio() {
                 navigate("overview");
               }}
             >
-              切换到{coach ? "学员" : "教练"}端 <ArrowRight size={14} />
+              {t("切换到")}
+              {coach ? t("学员") : t("教练")}
+              {t("端")}
+              <ArrowRight size={14} />
             </button>
           </div>
         )}
         <main>
           {loadError && (
             <div className="reload-notice" role="status">
-              <p>{loadError}</p>
+              <p>{t(loadError)}</p>
               <button
                 className="btn secondary small"
                 disabled={busy}
                 onClick={retryLoad}
               >
-                重新加载
+                {t("重新加载")}
               </button>
             </div>
           )}
@@ -2389,29 +2537,29 @@ export default function Studio() {
               </span>
               <h1>
                 {tab === "overview"
-                  ? `${current.full_name}，今天也要向前一步。`
+                  ? t("{0}，今天也要向前一步。", [current.full_name])
                   : tab === "member"
-                    ? "学员看板"
-                    : tabs.find((t) => t[0] === tab)?.[1]}
+                    ? t("学员看板")
+                    : t(tabs.find((item) => item[0] === tab)?.[1])}
               </h1>
               <p>
                 {
                   (
                     {
                       overview: coach
-                        ? "把时间留给训练，把日常安排交给这里。"
-                        : "你的下一次训练、专属计划和每一点进步。",
-                      schedule: "找到合适的时间，为下一次进步留出位置。",
-                      bookings: "查看课程安排，轻松处理预约与变更。",
+                        ? t("把时间留给训练，把日常安排交给这里。")
+                        : t("你的下一次训练、专属计划和每一点进步。"),
+                      schedule: t("找到合适的时间，为下一次进步留出位置。"),
+                      bookings: t("查看课程安排，轻松处理预约与变更。"),
                       credits: coach
-                        ? "掌握每位学员的余课、包月期限和上课历史。"
-                        : "查看剩余课时、上课统计及每笔增减明细。",
-                      members: "了解每一位学员，让训练更有针对性。",
-                      plans: "有方向地练习，有节奏地进步。",
-                      records: "记录身体变化，也记录每一步成长。",
-                      referrals: "和信任的人一起，把训练变成生活的一部分。",
-                      packages: "选择适合自己的训练节奏。",
-                      settings: "让你的训练空间，更适合你。",
+                        ? t("掌握每位学员的余课、包月期限和上课历史。")
+                        : t("查看剩余课时、上课统计及每笔增减明细。"),
+                      members: t("了解每一位学员，让训练更有针对性。"),
+                      plans: t("有方向地练习，有节奏地进步。"),
+                      records: t("记录身体变化，也记录每一步成长。"),
+                      referrals: t("和信任的人一起，把训练变成生活的一部分。"),
+                      packages: t("选择适合自己的训练节奏。"),
+                      settings: t("让你的训练空间，更适合你。"),
                     } as Record<string, string>
                   )[tab]
                 }
@@ -2421,13 +2569,13 @@ export default function Studio() {
               {["overview", "bookings"].includes(tab) && (
                 <button className="btn" onClick={() => book()}>
                   <Plus size={18} />
-                  {coach ? "添加预约" : "预约训练"}
+                  {coach ? t("添加预约") : t("预约训练")}
                 </button>
               )}
               {tab === "schedule" && coach && (
                 <button className="btn" onClick={addSlot}>
                   <Plus size={18} />
-                  开放时段
+                  {t("开放时段")}
                 </button>
               )}
               {tab === "members" && (
@@ -2439,25 +2587,25 @@ export default function Studio() {
                   }}
                 >
                   <Plus size={18} />
-                  邀请学员
+                  {t("邀请学员")}
                 </button>
               )}
               {tab === "plans" && coach && (
                 <button className="btn" onClick={() => editPlan()}>
                   <Plus size={18} />
-                  新建计划
+                  {t("新建计划")}
                 </button>
               )}
               {tab === "records" && coach && (
                 <button className="btn" onClick={() => editRecord()}>
                   <Plus size={18} />
-                  添加记录
+                  {t("添加记录")}
                 </button>
               )}
               {tab === "referrals" && coach && (
                 <button className="btn" onClick={createInvite}>
                   <Plus size={18} />
-                  生成邀请码
+                  {t("生成邀请码")}
                 </button>
               )}
             </div>
@@ -2468,47 +2616,55 @@ export default function Studio() {
                 <div>
                   <strong>
                     {coach
-                      ? "课时账户与上课统计"
+                      ? t("课时账户与上课统计")
                       : data.credits_ready
-                        ? `剩余按次课时：${memberSessionStats(data, current.id).balance} 节`
-                        : "课时账户待启用"}
+                        ? t("剩余按次课时：{0} 节", [
+                            memberSessionStats(data, current.id).balance,
+                          ])
+                        : t("课时账户待启用")}
                   </strong>
                   <p>
                     {coach
-                      ? "录入购课、查看余课和历史；已预约与已扣课分开计算。"
+                      ? t("录入购课、查看余课和历史；已预约与已扣课分开计算。")
                       : data.credits_ready &&
                           memberSessionStats(data, current.id).membership
-                        ? `包月有效至 ${memberSessionStats(data, current.id).membership!.ends_on}，有效期内不限次数。`
-                        : "完成或未到场各扣 1 节，预约和改期不提前扣除。"}
+                        ? t("包月有效至 {0}，有效期内不限次数。", [
+                            memberSessionStats(data, current.id).membership!
+                              .ends_on,
+                          ])
+                        : t("完成或未到场各扣 1 节，预约和改期不提前扣除。")}
                   </p>
                 </div>
                 <button
                   className="btn secondary small"
                   onClick={() => navigate("credits")}
                 >
-                  {coach ? "管理课时" : "查看课时明细"}
+                  {coach ? t("管理课时") : t("查看课时明细")}
                 </button>
               </div>
               {coach && (
-                <section className="work-queue" aria-label="待办事项">
+                <section className="work-queue" aria-label={t("待办事项")}>
                   <button onClick={() => openBookings("pending")}>
                     <strong>{pendingBookings.length}</strong>
                     <span>
-                      课程待确认结果<small>课后标记完成或未到场</small>
+                      {t("课程待确认结果")}
+                      <small>{t("课后标记完成或未到场")}</small>
                     </span>
                     <ChevronRight size={18} />
                   </button>
                   <button onClick={() => openMembers("needs-plan")}>
                     <strong>{needsPlan.length}</strong>
                     <span>
-                      学员待制定计划<small>仅统计在训学员</small>
+                      {t("学员待制定计划")}
+                      <small>{t("仅统计在训学员")}</small>
                     </span>
                     <ChevronRight size={18} />
                   </button>
                   <button onClick={() => openMembers("needs-price")}>
                     <strong>{needsPrice.length}</strong>
                     <span>
-                      学员待设置价格<small>金额仅对应学员可见</small>
+                      {t("学员待设置价格")}
+                      <small>{t("金额仅对应学员可见")}</small>
                     </span>
                     <ChevronRight size={18} />
                   </button>
@@ -2522,19 +2678,20 @@ export default function Studio() {
                       <h2>
                         {coach
                           ? todayBookings.length
-                            ? "今天的训练"
-                            : "接下来的训练"
+                            ? t("今天的训练")
+                            : t("接下来的训练")
                           : next &&
                               Date.parse(next.slots.starts_at) <= Date.now()
-                            ? "正在进行的训练"
-                            : "你的下一次训练"}
+                            ? t("正在进行的训练")
+                            : t("你的下一次训练")}
                       </h2>
                     </div>
                     <button
                       className="text-btn"
                       onClick={() => openBookings("all")}
                     >
-                      全部预约 <ArrowRight size={16} />
+                      {t("全部预约")}
+                      <ArrowRight size={16} />
                     </button>
                   </div>
                   {bookingCards(
@@ -2545,15 +2702,16 @@ export default function Studio() {
                         )
                       : upcoming.slice(0, 1),
                     coach
-                      ? "暂无接下来的训练，可为学员添加预约"
-                      : "你还没有预约，选择时间即可安排下一次训练",
+                      ? t("暂无接下来的训练，可为学员添加预约")
+                      : t("你还没有预约，选择时间即可安排下一次训练"),
                   )}
                   {coach && todayBookings.length > 3 && (
                     <button
                       className="text-btn agenda-more"
                       onClick={() => openBookings("today")}
                     >
-                      查看今天全部 {todayBookings.length} 节课程{" "}
+                      {t("查看今天全部")}
+                      {todayBookings.length} {t("节课程")}{" "}
                       <ArrowRight size={16} />
                     </button>
                   )}
@@ -2562,26 +2720,27 @@ export default function Studio() {
                       {displayTime(
                         next.slots.starts_at,
                         zone,
-                        "yyyy年MM月dd日 EEEE",
+                        t("yyyy年MM月dd日 EEEE"),
                       )}{" "}
-                      · {data.settings.location || "训练地点请与教练确认"}
+                      · {data.settings.location || t("训练地点请与教练确认")}
                       <br />
                       {Date.parse(next.slots.starts_at) > Date.now()
-                        ? "需要调整时，可直接使用上方的改期或取消按钮。"
-                        : "课程已开始，如需调整请联系教练。"}
+                        ? t("需要调整时，可直接使用上方的改期或取消按钮。")
+                        : t("课程已开始，如需调整请联系教练。")}
                     </p>
                   )}
                   <div className="panel-bottom">
                     <span>
                       <Clock3 size={15} />
-                      所有时间均以
-                      {zone === "America/Los_Angeles" ? "美西时区" : zone}显示
+                      {t("所有时间均以")}
+                      {zone === "America/Los_Angeles" ? t("美西时区") : zone}
+                      {t("显示")}
                     </span>
                     <button
                       className="text-btn"
                       onClick={() => navigate("schedule")}
                     >
-                      查看时间表
+                      {t("查看时间表")}
                     </button>
                   </div>
                 </section>
@@ -2594,28 +2753,32 @@ export default function Studio() {
                   </div>
                   <h2>
                     {coach
-                      ? "常用操作"
+                      ? t("常用操作")
                       : ownPlans.find((p) => p.status === "published")?.title ||
-                        "训练计划准备中"}
+                        t("训练计划准备中")}
                   </h2>
                   <p>
                     {coach
-                      ? "开放时间、记录训练，都可以从这里开始。"
+                      ? t("开放时间、记录训练，都可以从这里开始。")
                       : ownPlans.some((p) => p.status === "published")
-                        ? "这是教练当前为你安排的计划，点击查看完整训练内容。"
-                        : "教练发布后会显示在这里，你无需进行额外操作。"}
+                        ? t(
+                            "这是教练当前为你安排的计划，点击查看完整训练内容。",
+                          )
+                        : t("教练发布后会显示在这里，你无需进行额外操作。")}
                   </p>
                   <button onClick={() => navigate("plans")}>
-                    {coach ? "管理训练计划" : "查看训练计划"}{" "}
+                    {coach ? t("管理训练计划") : t("查看训练计划")}{" "}
                     <ArrowRight size={18} />
                   </button>
                   {coach && (
                     <div className="quick-actions">
                       <button onClick={addSlot}>
-                        开放时间 <Plus size={17} />
+                        {t("开放时间")}
+                        <Plus size={17} />
                       </button>
                       <button onClick={() => editRecord()}>
-                        添加训练记录 <Plus size={17} />
+                        {t("添加训练记录")}
+                        <Plus size={17} />
                       </button>
                     </div>
                   )}
@@ -2624,39 +2787,41 @@ export default function Studio() {
               <div className="stats-grid">
                 {[
                   {
-                    label: coach ? "在训学员" : "已完成训练",
+                    label: coach ? t("在训学员") : t("已完成训练"),
                     value: coach
                       ? members.filter((m) => m.active).length
                       : ownAppointments.filter((a) => a.status === "completed")
                           .length,
-                    unit: coach ? "位" : "次",
+                    unit: coach ? t("位") : t("次"),
                     icon: Users,
-                    note: coach ? "持续陪伴每一份改变" : "坚持，都有迹可循",
+                    note: coach
+                      ? t("持续陪伴每一份改变")
+                      : t("坚持，都有迹可循"),
                   },
                   {
-                    label: "接下来的训练",
+                    label: t("接下来的训练"),
                     value: upcoming.length,
-                    unit: "节",
+                    unit: t("节"),
                     icon: CalendarDays,
-                    note: "包含正在进行中的课程",
+                    note: t("包含正在进行中的课程"),
                   },
                   {
-                    label: coach ? "已发布计划" : "当前训练计划",
+                    label: coach ? t("已发布计划") : t("当前训练计划"),
                     value: ownPlans.filter(
                       (p) => !p.deleted_at && p.status === "published",
                     ).length,
-                    unit: "份",
+                    unit: t("份"),
                     icon: Dumbbell,
-                    note: "专属安排，循序渐进",
+                    note: t("专属安排，循序渐进"),
                   },
                   {
-                    label: "成功推荐",
+                    label: t("成功推荐"),
                     value: visibleReferrals.filter(
                       (r) => r.status === "confirmed",
                     ).length,
-                    unit: "人",
+                    unit: t("人"),
                     icon: Ticket,
-                    note: "完成邮箱验证的新学员",
+                    note: t("完成邮箱验证的新学员"),
                   },
                 ].map((s, i) => (
                   <div className={`stat-card stat-${i}`} key={s.label}>
@@ -2666,7 +2831,14 @@ export default function Studio() {
                     </div>
                     <div className="stat-value">
                       {s.value}
-                      <small>{s.unit}</small>
+                      <small>
+                        {language === "en" && s.value === 1
+                          ? s.unit
+                              .replace("sessions", "session")
+                              .replace("plans", "plan")
+                              .replace("people", "person")
+                          : s.unit}
+                      </small>
                     </div>
                     <p>{s.note}</p>
                   </div>
@@ -2679,13 +2851,14 @@ export default function Studio() {
                       <span className="eyebrow">
                         {coach ? "MEMBER MOMENTS" : "YOUR NEXT SESSION"}
                       </span>
-                      <h2>{coach ? "学员近况" : "训练准备"}</h2>
+                      <h2>{coach ? t("学员近况") : t("训练准备")}</h2>
                     </div>
                     <button
                       className="text-btn"
                       onClick={() => navigate(coach ? "members" : "records")}
                     >
-                      {coach ? "学员管理" : "查看档案"} <ArrowRight size={16} />
+                      {coach ? t("学员管理") : t("查看档案")}{" "}
+                      <ArrowRight size={16} />
                     </button>
                   </div>
                   {coach ? (
@@ -2710,14 +2883,14 @@ export default function Studio() {
                                     p.member_id === m.id &&
                                     !p.deleted_at &&
                                     p.status === "published",
-                                )?.title || "尚未指定训练计划"}
+                                )?.title || t("尚未指定训练计划")}
                               </small>
                             </span>
                             <ChevronRight size={17} />
                           </button>
                         ))}
                       {!members.length && (
-                        <Empty text="生成邀请码，迎接第一位学员" />
+                        <Empty text={t("生成邀请码，迎接第一位学员")} />
                       )}
                     </div>
                   ) : (
@@ -2725,15 +2898,18 @@ export default function Studio() {
                       <p>
                         <CheckCircle2 size={18} />{" "}
                         {next
-                          ? `${displayTime(next.slots.starts_at, zone)} · 记得预留出行时间`
-                          : "选择一个适合自己的训练时间"}
-                      </p>
-                      <p>
-                        <CheckCircle2 size={18} /> 穿着舒适的运动服，带好水杯
+                          ? t("{0} · 记得预留出行时间", [
+                              displayTime(next.slots.starts_at, zone),
+                            ])
+                          : t("选择一个适合自己的训练时间")}
                       </p>
                       <p>
                         <CheckCircle2 size={18} />{" "}
-                        身体状态有变化时，提前告诉教练
+                        {t("穿着舒适的运动服，带好水杯")}
+                      </p>
+                      <p>
+                        <CheckCircle2 size={18} />{" "}
+                        {t("身体状态有变化时，提前告诉教练")}
                       </p>
                     </div>
                   )}
@@ -2743,18 +2919,18 @@ export default function Studio() {
                     <span className="small-icon">
                       <Ticket />
                     </span>
-                    <h3>把好的改变，分享出去。</h3>
+                    <h3>{t("把好的改变，分享出去。")}</h3>
                   </div>
                   <p>
                     {coach
-                      ? "查看学员推荐记录，让每一份信任都被看见。"
-                      : "分享你的专属推荐码，邀请朋友一起开始训练。"}
+                      ? t("查看学员推荐记录，让每一份信任都被看见。")
+                      : t("分享你的专属推荐码，邀请朋友一起开始训练。")}
                   </p>
                   <button
                     className="text-btn"
                     onClick={() => navigate("referrals")}
                   >
-                    {coach ? "查看推荐记录" : "查看我的推荐码"}
+                    {coach ? t("查看推荐记录") : t("查看我的推荐码")}
                     <ArrowRight size={17} />
                   </button>
                 </section>
@@ -2775,12 +2951,14 @@ export default function Studio() {
                         {days[0].replaceAll("-", ".")} —{" "}
                         {days[6].slice(5).replace("-", ".")}
                       </h2>
-                      <p className="muted">{zone} · 每个时段仅接受一位学员</p>
+                      <p className="muted">
+                        {zone} {t("· 每个时段仅接受一位学员")}
+                      </p>
                     </div>
                     <div className="row gap">
                       <button
                         className="icon-btn bordered"
-                        aria-label="上一周"
+                        aria-label={t("上一周")}
                         disabled={week === 0}
                         onClick={() => setWeek(Math.max(0, week - 1))}
                       >
@@ -2790,11 +2968,11 @@ export default function Studio() {
                         className="btn secondary small"
                         onClick={() => setWeek(0)}
                       >
-                        回到今天
+                        {t("回到今天")}
                       </button>
                       <button
                         className="icon-btn bordered"
-                        aria-label="下一周"
+                        aria-label={t("下一周")}
                         onClick={() => setWeek(week + 1)}
                       >
                         <ChevronRight size={18} />
@@ -2804,7 +2982,9 @@ export default function Studio() {
                   {!coach ? (
                     <div className="available-agenda">
                       <p className="muted">
-                        只显示可以预约的时间。选择时段后，还可以给教练留言。
+                        {t(
+                          "只显示可以预约的时间。选择时段后，还可以给教练留言。",
+                        )}
                       </p>
                       {days.map((day) => {
                         const slots = available.filter(
@@ -2819,13 +2999,13 @@ export default function Studio() {
                               {displayTime(
                                 localToISO(day + "T12:00", zone),
                                 zone,
-                                "MM月dd日 EEEE",
+                                t("MM月dd日 EEEE"),
                               )}
                               <small>
                                 {day === scheduleDays(zone, 0)[0]
-                                  ? "今天 · "
+                                  ? t("今天 · ")
                                   : ""}
-                                {slots.length} 个可选时段
+                                {slots.length} {t("个可选时段")}
                               </small>
                             </h3>
                             <div className="agenda-times">
@@ -2834,7 +3014,10 @@ export default function Studio() {
                                   className="btn secondary"
                                   key={s.id}
                                   onClick={() => book(s)}
-                                  aria-label={`预约 ${displayTime(s.starts_at, zone)} 至 ${displayTime(s.ends_at, zone, "HH:mm")}`}
+                                  aria-label={t("预约 {0} 至 {1}", [
+                                    displayTime(s.starts_at, zone),
+                                    displayTime(s.ends_at, zone, "HH:mm"),
+                                  ])}
                                 >
                                   <Clock3 size={16} />
                                   {displayTime(
@@ -2850,13 +3033,16 @@ export default function Studio() {
                       })}
                       {!available.length && (
                         <Empty
-                          text="这 7 天暂无可预约时段。可以查看下一周，或联系教练开放时间。"
+                          text={t(
+                            "这 7 天暂无可预约时段。可以查看下一周，或联系教练开放时间。",
+                          )}
                           action={
                             <button
                               className="btn secondary"
                               onClick={() => setWeek(week + 1)}
                             >
-                              查看下一周 <ArrowRight size={16} />
+                              {t("查看下一周")}
+                              <ArrowRight size={16} />
                             </button>
                           }
                         />
@@ -2892,11 +3078,11 @@ export default function Studio() {
                                   {displayTime(s.ends_at, zone, "HH:mm")}
                                 </span>
                                 <strong>
-                                  {s.available ? "可预约" : "已预约"}
+                                  {s.available ? t("可预约") : t("已预约")}
                                 </strong>
                                 {s.available && (
                                   <button onClick={() => book(s)}>
-                                    {coach ? "代预约" : "预约"}{" "}
+                                    {coach ? t("代预约") : t("预约")}{" "}
                                     <Plus size={13} />
                                   </button>
                                 )}
@@ -2905,19 +3091,19 @@ export default function Studio() {
                                     className="slot-remove"
                                     onClick={() =>
                                       setDialog({
-                                        title: "关闭此时段",
+                                        title: t("关闭此时段"),
                                         description: displayTime(
                                           s.starts_at,
                                           zone,
                                         ),
                                         fields: [],
-                                        submit: "关闭时段",
+                                        submit: t("关闭时段"),
                                         action: () =>
                                           mutate("save_slot", { p_id: s.id }),
                                       })
                                     }
                                   >
-                                    关闭时段
+                                    {t("关闭时段")}
                                   </button>
                                 )}
                               </div>
@@ -2926,17 +3112,19 @@ export default function Studio() {
                             (s) =>
                               displayTime(s.starts_at, zone, "yyyy-MM-dd") ===
                               day,
-                          ) && <span className="no-slot">暂无开放时段</span>}
+                          ) && (
+                            <span className="no-slot">{t("暂无开放时段")}</span>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
                   <div className="panel-bottom">
-                    <span>预约后可在「课程预约」中改期或取消。</span>
+                    <span>{t("预约后可在「课程预约」中改期或取消。")}</span>
                     {coach && (
                       <button className="text-btn" onClick={addSlot}>
                         <Plus size={15} />
-                        开放时间
+                        {t("开放时间")}
                       </button>
                     )}
                   </div>
@@ -2948,20 +3136,20 @@ export default function Studio() {
               <div className="toolbar">
                 <div className="segmented">
                   {[
-                    ["upcoming", "接下来"],
-                    ["today", "今天"],
-                    ...(coach ? [["pending", "待确认结果"]] : []),
-                    ["all", "全部"],
-                    ["completed", "已完成"],
-                    ["no_show", "未到场"],
-                    ["cancelled", "已取消"],
+                    ["upcoming", t("接下来")],
+                    ["today", t("今天")],
+                    ...(coach ? [["pending", t("待确认结果")]] : []),
+                    ["all", t("全部")],
+                    ["completed", t("已完成")],
+                    ["no_show", t("未到场")],
+                    ["cancelled", t("已取消")],
                   ].map(([id, label]) => (
                     <button
                       className={filter === id ? "active" : ""}
                       onClick={() => setFilter(id)}
                       key={id}
                     >
-                      {label}
+                      {t(label)}
                     </button>
                   ))}
                 </div>
@@ -2969,7 +3157,7 @@ export default function Studio() {
                   <label className="search">
                     <Search size={17} />
                     <input
-                      placeholder="搜索学员"
+                      placeholder={t("搜索学员")}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                     />
@@ -2978,13 +3166,14 @@ export default function Studio() {
               </div>
               {coach && (
                 <p className="reload-notice">
-                  课程结束后，在「待确认结果」中标记完成或 No
-                  show。预约成功即已排课，无需额外确认；预约和改期不扣课。
+                  {t(
+                    "课程结束后，在「待确认结果」中标记完成或 No show。预约成功即已排课，无需额外确认；预约和改期不扣课。",
+                  )}
                   <button
                     className="text-btn"
                     onClick={() => setFilter("pending")}
                   >
-                    去标记课程结果
+                    {t("去标记课程结果")}
                   </button>
                 </p>
               )}
@@ -3001,14 +3190,14 @@ export default function Studio() {
                   )
                   .sort((a, b) => compareBookings(a, b)),
                 filter === "pending"
-                  ? "没有待确认结果的课程"
+                  ? t("没有待确认结果的课程")
                   : filter === "today"
-                    ? "今天没有符合条件的课程"
+                    ? t("今天没有符合条件的课程")
                     : query
-                      ? "没有找到这位学员的预约"
+                      ? t("没有找到这位学员的预约")
                       : filter === "upcoming"
-                        ? "暂无接下来的训练"
-                        : "当前筛选下没有预约",
+                        ? t("暂无接下来的训练")
+                        : t("当前筛选下没有预约"),
                 filter === "upcoming" && !query.trim(),
               )}
             </section>
@@ -3024,7 +3213,7 @@ export default function Studio() {
               onBook={() => book(undefined, undefined, memberFilter)}
               onPlan={() => editPlan(undefined, memberFilter)}
               onRecord={() => editRecord(undefined, memberFilter)}
-              bookings={(items) => bookingCards(items, "暂无课程", false)}
+              bookings={(items) => bookingCards(items, t("暂无课程"), false)}
             />
           )}
           {tab === "members" && coach && (
@@ -3032,29 +3221,31 @@ export default function Studio() {
               <div className="toolbar">
                 <h2>
                   {filter === "needs-plan"
-                    ? "待制定计划"
+                    ? t("待制定计划")
                     : filter === "needs-price"
-                      ? "待设置价格"
-                      : "学员列表"}{" "}
+                      ? t("待设置价格")
+                      : t("学员列表")}{" "}
                   <span className="count">{visibleMembers.length}</span>
                 </h2>
                 <select
-                  aria-label="筛选待办学员"
+                  aria-label={t("筛选待办学员")}
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 >
-                  <option value="all">全部学员</option>
+                  <option value="all">{t("全部学员")}</option>
                   <option value="needs-plan">
-                    待制定计划（{needsPlan.length}）
+                    {t("待制定计划（")}
+                    {needsPlan.length}）
                   </option>
                   <option value="needs-price">
-                    待设置价格（{needsPrice.length}）
+                    {t("待设置价格（")}
+                    {needsPrice.length}）
                   </option>
                 </select>
                 <label className="search">
                   <Search size={17} />
                   <input
-                    placeholder="搜索姓名或邮箱"
+                    placeholder={t("搜索姓名或邮箱")}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
@@ -3064,19 +3255,19 @@ export default function Studio() {
                 <table>
                   <thead>
                     <tr>
-                      <th>学员</th>
-                      <th>当前计划</th>
-                      <th>课程 / 完成</th>
-                      <th>成功推荐</th>
-                      <th>状态</th>
-                      <th>管理</th>
+                      <th>{t("学员")}</th>
+                      <th>{t("当前计划")}</th>
+                      <th>{t("课程 / 完成")}</th>
+                      <th>{t("成功推荐")}</th>
+                      <th>{t("状态")}</th>
+                      <th>{t("管理")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     <Paginated
                       items={visibleMembers}
                       resetKey={[tab, filter, memberFilter, query, current.id]}
-                      label="学员"
+                      label={t("学员")}
                       tableColumns={6}
                     >
                       {(pageItems, pageOffset) =>
@@ -3096,7 +3287,7 @@ export default function Studio() {
                                     {m.full_name}
                                   </button>
                                   <small>{m.email}</small>
-                                  <small>{m.phone || "未填写电话"}</small>
+                                  <small>{m.phone || t("未填写电话")}</small>
                                 </div>
                               </div>
                             </td>
@@ -3106,7 +3297,7 @@ export default function Studio() {
                                   p.member_id === m.id &&
                                   !p.deleted_at &&
                                   p.status === "published",
-                              )?.title || "尚未指定"}
+                              )?.title || t("尚未指定")}
                               <small>{m.goals}</small>
                             </td>
                             <td>
@@ -3134,13 +3325,13 @@ export default function Studio() {
                                     r.status === "confirmed",
                                 ).length
                               }{" "}
-                              人
+                              {t("人")}
                             </td>
                             <td>
                               <span
                                 className={`badge ${m.active ? "confirmed" : "cancelled"}`}
                               >
-                                {m.active ? "在训" : "已停用"}
+                                {m.active ? t("在训") : t("已停用")}
                               </span>
                             </td>
                             <td>
@@ -3152,7 +3343,7 @@ export default function Studio() {
                                     setMemberFilter(m.id);
                                   }}
                                 >
-                                  课时
+                                  {t("课时")}
                                 </button>
                                 {m.active && (
                                   <button
@@ -3161,7 +3352,7 @@ export default function Studio() {
                                       book(undefined, undefined, m.id)
                                     }
                                   >
-                                    预约
+                                    {t("预约")}
                                   </button>
                                 )}
                                 <button
@@ -3171,7 +3362,7 @@ export default function Studio() {
                                     setMemberFilter(m.id);
                                   }}
                                 >
-                                  档案
+                                  {t("档案")}
                                 </button>
                                 <button
                                   className="text-btn"
@@ -3193,25 +3384,28 @@ export default function Studio() {
                                   }}
                                 >
                                   {memberNeeds(data, m.id).plan
-                                    ? "制定计划"
-                                    : "查看计划"}
+                                    ? t("制定计划")
+                                    : t("查看计划")}
                                 </button>
                                 <button
                                   className="text-btn"
                                   onClick={() => editMemberPrice(m.id)}
                                 >
-                                  专属价格
+                                  {t("专属价格")}
                                 </button>
                                 <button
                                   className="text-btn muted"
                                   onClick={() =>
                                     setDialog({
                                       title: m.active
-                                        ? "停用学员账号"
-                                        : "恢复学员账号",
-                                      description: `${m.full_name}：停用后无法读取训练资料或操作预约。已有预约仍保留，可由教练处理。`,
+                                        ? t("停用学员账号")
+                                        : t("恢复学员账号"),
+                                      description: t(
+                                        "{0}：停用后无法读取训练资料或操作预约。已有预约仍保留，可由教练处理。",
+                                        [m.full_name],
+                                      ),
                                       fields: [],
-                                      submit: "确认",
+                                      submit: t("确认"),
                                       action: () =>
                                         mutate("set_member_active", {
                                           p_id: m.id,
@@ -3220,7 +3414,7 @@ export default function Studio() {
                                     })
                                   }
                                 >
-                                  {m.active ? "停用" : "恢复"}
+                                  {m.active ? t("停用") : t("恢复")}
                                 </button>
                               </div>
                             </td>
@@ -3231,11 +3425,15 @@ export default function Studio() {
                   </tbody>
                 </table>
               </div>
-              {!members.length && <Empty text="还没有学员，先生成一个邀请码" />}
+              {!members.length && (
+                <Empty text={t("还没有学员，先生成一个邀请码")} />
+              )}
               {!!members.length && !visibleMembers.length && (
                 <Empty
                   text={
-                    query ? "没有符合搜索条件的学员" : "这项待办已全部处理完成"
+                    query
+                      ? t("没有符合搜索条件的学员")
+                      : t("这项待办已全部处理完成")
                   }
                 />
               )}
@@ -3245,19 +3443,21 @@ export default function Studio() {
             <>
               {coach && (
                 <p className="reload-notice">
-                  发布同一学员的新计划后，原当前计划自动转为历史计划。不会因时间自动过期；草稿仅教练可见。
+                  {t(
+                    "发布同一学员的新计划后，原当前计划自动转为历史计划。不会因时间自动过期；草稿仅教练可见。",
+                  )}
                 </p>
               )}
               <div className="toolbar outside">
                 <div className="segmented">
                   {[
-                    ["all", "全部计划"],
-                    ["published", "当前计划"],
-                    ["archived", "历史计划"],
+                    ["all", t("全部计划")],
+                    ["published", t("当前计划")],
+                    ["archived", t("历史计划")],
                     ...(coach
                       ? [
-                          ["draft", "草稿"],
-                          ["deleted", "已删除"],
+                          ["draft", t("草稿")],
+                          ["deleted", t("已删除")],
                         ]
                       : []),
                   ].map(([id, label]) => (
@@ -3266,17 +3466,17 @@ export default function Studio() {
                       onClick={() => setFilter(id)}
                       className={filter === id ? "active" : ""}
                     >
-                      {label}
+                      {t(label)}
                     </button>
                   ))}
                 </div>
                 {coach && (
                   <select
-                    aria-label="按学员筛选计划"
+                    aria-label={t("按学员筛选计划")}
                     value={memberFilter}
                     onChange={(e) => setMemberFilter(e.target.value)}
                   >
-                    <option value="all">全部学员</option>
+                    <option value="all">{t("全部学员")}</option>
                     {members.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.full_name}
@@ -3296,7 +3496,7 @@ export default function Studio() {
                       (memberFilter === "all" || p.member_id === memberFilter),
                   )}
                   resetKey={[tab, filter, memberFilter, query, current.id]}
-                  label="训练计划"
+                  label={t("训练计划")}
                 >
                   {(pageItems, pageOffset) =>
                     pageItems.map((p) => (
@@ -3305,7 +3505,9 @@ export default function Studio() {
                           <span className="small-icon">
                             <Dumbbell />
                           </span>
-                          <Badge value={p.deleted_at ? "已删除" : p.status} />
+                          <Badge
+                            value={p.deleted_at ? t("已删除") : p.status}
+                          />
                         </div>
                         <h2>{p.title}</h2>
                         <p className="muted">
@@ -3317,8 +3519,8 @@ export default function Studio() {
                           <span>
                             <ShieldCheck size={14} />
                             {p.deleted_at || p.status === "draft"
-                              ? "仅教练可见"
-                              : "专属计划 · 仅指定学员可见"}
+                              ? t("仅教练可见")
+                              : t("专属计划 · 仅指定学员可见")}
                           </span>
                           {coach && (
                             <div className="row gap wrap">
@@ -3327,7 +3529,7 @@ export default function Studio() {
                                   className="text-btn"
                                   onClick={() => editPlan(p)}
                                 >
-                                  编辑计划
+                                  {t("编辑计划")}
                                 </button>
                               )}
                               <button
@@ -3340,7 +3542,7 @@ export default function Studio() {
                                   )
                                 }
                               >
-                                {p.deleted_at ? "恢复为草稿" : "删除"}
+                                {p.deleted_at ? t("恢复为草稿") : t("删除")}
                               </button>
                             </div>
                           )}
@@ -3362,12 +3564,14 @@ export default function Studio() {
                   <Empty
                     text={
                       !coach && filter === "published"
-                        ? "教练尚未发布当前计划，发布后会自动显示在这里。之前的计划可在「历史计划」查看。"
+                        ? t(
+                            "教练尚未发布当前计划，发布后会自动显示在这里。之前的计划可在「历史计划」查看。",
+                          )
                         : filter !== "all" || memberFilter !== "all"
-                          ? "当前筛选下没有训练计划"
+                          ? t("当前筛选下没有训练计划")
                           : coach
-                            ? "还没有训练计划，为学员制定第一份计划吧"
-                            : "教练发布计划后，你会在这里看到"
+                            ? t("还没有训练计划，为学员制定第一份计划吧")
+                            : t("教练发布计划后，你会在这里看到")
                     }
                   />
                 </div>
@@ -3379,16 +3583,16 @@ export default function Studio() {
               <div className="toolbar outside">
                 <p className="muted">
                   {coach
-                    ? "草稿仅你可见；发布后只有对应学员可见。"
-                    : "以下为教练发布给你的训练记录。"}
+                    ? t("草稿仅你可见；发布后只有对应学员可见。")
+                    : t("以下为教练发布给你的训练记录。")}
                 </p>
                 {coach && (
                   <select
-                    aria-label="按学员筛选档案"
+                    aria-label={t("按学员筛选档案")}
                     value={memberFilter}
                     onChange={(e) => setMemberFilter(e.target.value)}
                   >
-                    <option value="all">全部学员</option>
+                    <option value="all">{t("全部学员")}</option>
                     {members.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.full_name}
@@ -3400,17 +3604,17 @@ export default function Studio() {
               {coach && (
                 <div className="segmented spaced">
                   {[
-                    ["all", "全部档案"],
-                    ["draft", "草稿"],
-                    ["published", "已发布"],
-                    ["deleted", "已删除"],
+                    ["all", t("全部档案")],
+                    ["draft", t("草稿")],
+                    ["published", t("已发布")],
+                    ["deleted", t("已删除")],
                   ].map(([value, label]) => (
                     <button
                       key={value}
                       className={filter === value ? "active" : ""}
                       onClick={() => setFilter(value)}
                     >
-                      {label}
+                      {t(label)}
                     </button>
                   ))}
                 </div>
@@ -3426,7 +3630,7 @@ export default function Studio() {
                     )
                     .sort((a, b) => b.recorded_on.localeCompare(a.recorded_on))}
                   resetKey={[tab, filter, memberFilter, query, current.id]}
-                  label="训练档案"
+                  label={t("训练档案")}
                 >
                   {(pageItems, pageOffset) =>
                     pageItems.map((r) => (
@@ -3438,23 +3642,23 @@ export default function Studio() {
                             className={`badge ${r.shared ? "confirmed" : "draft"}`}
                           >
                             {r.deleted_at
-                              ? "已删除"
+                              ? t("已删除")
                               : r.shared
-                                ? "已发布"
-                                : "草稿 · 仅教练"}
+                                ? t("已发布")
+                                : t("草稿 · 仅教练")}
                           </span>
                         </div>
                         <div className="record-body">
                           <div className="record-metrics">
                             <div>
-                              <span>体重</span>
+                              <span>{t("体重")}</span>
                               <strong>
                                 {kgToLb(r.weight) ?? "—"}
                                 <small>lb</small>
                               </strong>
                             </div>
                             <div>
-                              <span>体脂率</span>
+                              <span>{t("体脂率")}</span>
                               <strong>
                                 {r.body_fat ?? "—"}
                                 <small>%</small>
@@ -3464,16 +3668,16 @@ export default function Studio() {
                               .filter((f) => r.measurements?.[f.key] != null)
                               .map((f) => (
                                 <div key={f.key}>
-                                  <span>{f.label}</span>
+                                  <span>{t(f.label)}</span>
                                   <strong>
                                     {r.measurements![f.key]}
-                                    <small>{f.unit}</small>
+                                    <small>{t(f.unit)}</small>
                                   </strong>
                                 </div>
                               ))}
                           </div>
                           <p className="pre-wrap">
-                            {r.notes || "本次未填写备注。"}
+                            {r.notes || t("本次未填写备注。")}
                           </p>
                         </div>
                         {coach && (
@@ -3483,7 +3687,7 @@ export default function Studio() {
                                 className="text-btn"
                                 onClick={() => editRecord(r)}
                               >
-                                编辑
+                                {t("编辑")}
                               </button>
                             )}
                             <button
@@ -3496,7 +3700,7 @@ export default function Studio() {
                                 )
                               }
                             >
-                              {r.deleted_at ? "恢复为草稿" : "删除"}
+                              {r.deleted_at ? t("恢复为草稿") : t("删除")}
                             </button>
                           </div>
                         )}
@@ -3514,8 +3718,8 @@ export default function Studio() {
                   <Empty
                     text={
                       filter !== "all" || memberFilter !== "all"
-                        ? "当前筛选下没有训练记录"
-                        : "还没有训练记录"
+                        ? t("当前筛选下没有训练记录")
+                        : t("还没有训练记录")
                     }
                   />
                 </div>
@@ -3529,22 +3733,24 @@ export default function Studio() {
                   <Ticket size={32} />
                   <h2>
                     {coach
-                      ? "一起，把好的改变传递出去。"
-                      : "你的朋友，也是未来的训练伙伴。"}
+                      ? t("一起，把好的改变传递出去。")
+                      : t("你的朋友，也是未来的训练伙伴。")}
                   </h2>
                   <p>
                     {coach
-                      ? "教练邀请码和学员推荐码的注册记录，都在这里。"
+                      ? t("教练邀请码和学员推荐码的注册记录，都在这里。")
                       : data.settings.allow_referral_signup
-                        ? "朋友使用你的代码注册，验证邮箱后即可计为成功推荐。"
-                        : "分享推荐码给朋友，注册时还需教练邀请码。"}
+                        ? t(
+                            "朋友使用你的代码注册，验证邮箱后即可计为成功推荐。",
+                          )
+                        : t("分享推荐码给朋友，注册时还需教练邀请码。")}
                   </p>
                   {!coach && (
                     <div className="ref-code">
                       <code>{current.referral_code}</code>
                       <button
                         className="icon-btn"
-                        aria-label="复制推荐码"
+                        aria-label={t("复制推荐码")}
                         onClick={() => copy(current.referral_code)}
                       >
                         <Copy size={18} />
@@ -3562,47 +3768,47 @@ export default function Studio() {
                     }
                   >
                     {coach ? <Plus size={17} /> : <Link2 size={17} />}
-                    {coach ? "创建邀请码" : "复制邀请链接"}
+                    {coach ? t("创建邀请码") : t("复制邀请链接")}
                   </button>
                 </section>
                 <section className="panel referral-total">
                   <span className="eyebrow">GROW TOGETHER</span>
-                  <span>成功推荐</span>
+                  <span>{t("成功推荐")}</span>
                   <strong>
                     {
                       visibleReferrals.filter((r) => r.status === "confirmed")
                         .length
                     }
-                    <small> 人</small>
+                    <small> {t("人")}</small>
                   </strong>
                   <p>
                     {
                       visibleReferrals.filter((r) => r.status === "pending")
                         .length
                     }{" "}
-                    人等待邮箱验证
+                    {t("人等待邮箱验证")}
                   </p>
                 </section>
               </div>
               {coach && (
                 <section className="panel spaced">
                   <div className="section-head">
-                    <h2>邀请码管理</h2>
+                    <h2>{t("邀请码管理")}</h2>
                     <button className="text-btn" onClick={createInvite}>
                       <Plus size={16} />
-                      创建邀请码
+                      {t("创建邀请码")}
                     </button>
                   </div>
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
-                          <th>邀请码</th>
-                          <th>限定邮箱</th>
-                          <th>使用次数</th>
-                          <th>到期日</th>
-                          <th>状态</th>
-                          <th>操作</th>
+                          <th>{t("邀请码")}</th>
+                          <th>{t("限定邮箱")}</th>
+                          <th>{t("使用次数")}</th>
+                          <th>{t("到期日")}</th>
+                          <th>{t("状态")}</th>
+                          <th>{t("操作")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3615,7 +3821,7 @@ export default function Studio() {
                             query,
                             current.id,
                           ]}
-                          label="邀请码"
+                          label={t("邀请码")}
                           tableColumns={6}
                         >
                           {(pageItems, pageOffset) =>
@@ -3630,7 +3836,7 @@ export default function Studio() {
                                     <Copy size={13} />
                                   </button>
                                 </td>
-                                <td>{i.email || "不限"}</td>
+                                <td>{i.email || t("不限")}</td>
                                 <td>
                                   {i.uses} / {i.max_uses}
                                 </td>
@@ -3641,17 +3847,17 @@ export default function Studio() {
                                         zone,
                                         "yyyy.MM.dd",
                                       )
-                                    : "不限"}
+                                    : t("不限")}
                                 </td>
                                 <td>
                                   {!i.active
-                                    ? "已停用"
+                                    ? t("已停用")
                                     : i.uses >= i.max_uses
-                                      ? "已用完"
+                                      ? t("已用完")
                                       : i.expires_at &&
                                           new Date(i.expires_at) < new Date()
-                                        ? "已过期"
-                                        : "可使用"}
+                                        ? t("已过期")
+                                        : t("可使用")}
                                 </td>
                                 <td>
                                   <div className="row gap">
@@ -3663,18 +3869,19 @@ export default function Studio() {
                                         )
                                       }
                                     >
-                                      复制链接
+                                      {t("复制链接")}
                                     </button>
                                     {i.active && (
                                       <button
                                         className="text-btn muted"
                                         onClick={() =>
                                           setDialog({
-                                            title: "停用邀请码",
-                                            description:
+                                            title: t("停用邀请码"),
+                                            description: t(
                                               "停用后，新用户无法再使用此邀请码注册。",
+                                            ),
                                             fields: [],
-                                            submit: "停用",
+                                            submit: t("停用"),
                                             action: () =>
                                               mutate("revoke_invite", {
                                                 p_id: i.id,
@@ -3682,7 +3889,7 @@ export default function Studio() {
                                           })
                                         }
                                       >
-                                        停用
+                                        {t("停用")}
                                       </button>
                                     )}
                                   </div>
@@ -3694,23 +3901,23 @@ export default function Studio() {
                       </tbody>
                     </table>
                   </div>
-                  {!data.invites.length && <Empty text="尚未创建邀请码" />}
+                  {!data.invites.length && <Empty text={t("尚未创建邀请码")} />}
                 </section>
               )}
               {coach && (
                 <section className="panel spaced">
                   <div className="section-head">
-                    <h2>各学员推荐汇总</h2>
+                    <h2>{t("各学员推荐汇总")}</h2>
                   </div>
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
-                          <th>学员</th>
-                          <th>固定推荐码</th>
-                          <th>总注册</th>
-                          <th>成功推荐</th>
-                          <th>待验证</th>
+                          <th>{t("学员")}</th>
+                          <th>{t("固定推荐码")}</th>
+                          <th>{t("总注册")}</th>
+                          <th>{t("成功推荐")}</th>
+                          <th>{t("待验证")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3723,7 +3930,7 @@ export default function Studio() {
                             query,
                             current.id,
                           ]}
-                          label="推荐汇总"
+                          label={t("推荐汇总")}
                           tableColumns={5}
                         >
                           {(pageItems, pageOffset) =>
@@ -3769,23 +3976,23 @@ export default function Studio() {
               )}
               <section className="panel">
                 <div className="section-head">
-                  <h2>推荐明细</h2>
+                  <h2>{t("推荐明细")}</h2>
                   <button
                     className="btn secondary small"
                     onClick={exportReferrals}
                   >
                     <ArrowDownToLine size={15} />
-                    导出 CSV
+                    {t("导出 CSV")}
                   </button>
                 </div>
                 {coach && (
                   <div className="toolbar">
                     <select
-                      aria-label="按推荐人筛选"
+                      aria-label={t("按推荐人筛选")}
                       value={memberFilter}
                       onChange={(e) => setMemberFilter(e.target.value)}
                     >
-                      <option value="all">全部推荐人</option>
+                      <option value="all">{t("全部推荐人")}</option>
                       {members.map((m) => (
                         <option value={m.id} key={m.id}>
                           {m.full_name}
@@ -3793,13 +4000,13 @@ export default function Studio() {
                       ))}
                     </select>
                     <select
-                      aria-label="按推荐状态筛选"
+                      aria-label={t("按推荐状态筛选")}
                       value={filter}
                       onChange={(e) => setFilter(e.target.value)}
                     >
-                      <option value="all">全部状态</option>
-                      <option value="confirmed">推荐成功</option>
-                      <option value="pending">待验证</option>
+                      <option value="all">{t("全部状态")}</option>
+                      <option value="confirmed">{t("推荐成功")}</option>
+                      <option value="pending">{t("待验证")}</option>
                     </select>
                   </div>
                 )}
@@ -3807,11 +4014,11 @@ export default function Studio() {
                   <table>
                     <thead>
                       <tr>
-                        {coach && <th>推荐人</th>}
-                        <th>新学员</th>
-                        <th>注册时间</th>
-                        <th>状态</th>
-                        <th>成功时间</th>
+                        {coach && <th>{t("推荐人")}</th>}
+                        <th>{t("新学员")}</th>
+                        <th>{t("注册时间")}</th>
+                        <th>{t("状态")}</th>
+                        <th>{t("成功时间")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3829,7 +4036,7 @@ export default function Studio() {
                           query,
                           current.id,
                         ]}
-                        label="推荐明细"
+                        label={t("推荐明细")}
                         tableColumns={coach ? 5 : 4}
                       >
                         {(pageItems, pageOffset) =>
@@ -3840,7 +4047,7 @@ export default function Studio() {
                                 {r.referred_name ||
                                   (coach
                                     ? name(r.referred_id)
-                                    : "注册姓名待更新")}
+                                    : t("注册姓名待更新"))}
                               </td>
                               <td>
                                 {displayTime(
@@ -3852,7 +4059,9 @@ export default function Studio() {
                               <td>
                                 <Badge
                                   value={
-                                    r.status === "pending" ? "待验证" : r.status
+                                    r.status === "pending"
+                                      ? t("待验证")
+                                      : r.status
                                   }
                                 />
                               </td>
@@ -3873,7 +4082,7 @@ export default function Studio() {
                   </table>
                 </div>
                 {!visibleReferrals.length && (
-                  <Empty text="暂时还没有推荐记录" />
+                  <Empty text={t("暂时还没有推荐记录")} />
                 )}
               </section>
             </>
@@ -3895,11 +4104,12 @@ export default function Studio() {
                 <Wallet size={20} />
                 <div>
                   <strong>
-                    {coach ? "按学员设置专属价格" : "你的专属课程方案"}
+                    {coach ? t("按学员设置专属价格") : t("你的专属课程方案")}
                   </strong>
                   <p>
-                    单次训练，以及 1、3、12
-                    个月不限次套餐。金额为整个周期总价，仅本人和教练可见；到期手动购买，不自动续费。
+                    {t(
+                      "单次训练，以及 1、3、12 个月不限次套餐。金额为整个周期总价，仅本人和教练可见；到期手动购买，不自动续费。",
+                    )}
                   </p>
                 </div>
               </div>
@@ -3909,12 +4119,12 @@ export default function Studio() {
                     <table>
                       <thead>
                         <tr>
-                          <th>学员</th>
-                          <th>单次训练</th>
-                          <th>1 个月</th>
-                          <th>3 个月</th>
-                          <th>12 个月</th>
-                          <th>操作</th>
+                          <th>{t("学员")}</th>
+                          <th>{t("单次训练")}</th>
+                          <th>{t("1 个月")}</th>
+                          <th>{t("3 个月")}</th>
+                          <th>{t("12 个月")}</th>
+                          <th>{t("操作")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3927,7 +4137,7 @@ export default function Studio() {
                             query,
                             current.id,
                           ]}
-                          label="专属价格"
+                          label={t("专属价格")}
                           tableColumns={6}
                         >
                           {(pageItems, pageOffset) =>
@@ -3958,7 +4168,7 @@ export default function Studio() {
                                       className="text-btn"
                                       onClick={() => editMemberPrice(m.id)}
                                     >
-                                      设置价格
+                                      {t("设置价格")}
                                     </button>
                                   </td>
                                 </tr>
@@ -3970,7 +4180,7 @@ export default function Studio() {
                     </table>
                   </div>
                   {!members.length && (
-                    <Empty text="学员注册后，可在这里分别设置价格" />
+                    <Empty text={t("学员注册后，可在这里分别设置价格")} />
                   )}
                 </section>
               ) : null}
@@ -3988,46 +4198,46 @@ export default function Studio() {
               <section className="panel settings-card">
                 <div className="row gap">
                   <UserRound size={22} />
-                  <h2>个人资料</h2>
+                  <h2>{t("个人资料")}</h2>
                 </div>
                 <dl>
-                  <dt>姓名</dt>
+                  <dt>{t("姓名")}</dt>
                   <dd>{current.full_name}</dd>
-                  <dt>登录邮箱</dt>
+                  <dt>{t("登录邮箱")}</dt>
                   <dd>{current.email}</dd>
-                  <dt>联系电话</dt>
-                  <dd>{current.phone || "未填写"}</dd>
-                  <dt>训练目标</dt>
-                  <dd>{current.goals || "未填写"}</dd>
-                  <dt>个人时区</dt>
+                  <dt>{t("联系电话")}</dt>
+                  <dd>{current.phone || t("未填写")}</dd>
+                  <dt>{t("训练目标")}</dt>
+                  <dd>{current.goals || t("未填写")}</dd>
+                  <dt>{t("个人时区")}</dt>
                   <dd>{current.timezone}</dd>
                 </dl>
                 <button
                   className="btn secondary"
                   onClick={() =>
                     setDialog({
-                      title: "编辑个人资料",
+                      title: t("编辑个人资料"),
                       fields: [
                         {
                           name: "p_name",
-                          label: "姓名",
+                          label: t("姓名"),
                           value: current.full_name,
                           required: true,
                         },
                         {
                           name: "p_phone",
-                          label: "电话",
+                          label: t("电话"),
                           value: current.phone,
                         },
                         {
                           name: "p_goals",
-                          label: "训练目标",
+                          label: t("训练目标"),
                           type: "textarea",
                           value: current.goals,
                         },
                         {
                           name: "p_timezone",
-                          label: "个人时区",
+                          label: t("个人时区"),
                           type: "select",
                           value: current.timezone,
                           options: zones.map((z) => ({ value: z, label: z })),
@@ -4035,7 +4245,7 @@ export default function Studio() {
                         },
                         {
                           name: "p_notifications",
-                          label: "接收预约更新、训练计划和课前提醒邮件",
+                          label: t("接收预约更新、训练计划和课前提醒邮件"),
                           type: "checkbox",
                           value: current.email_notifications,
                         },
@@ -4048,17 +4258,19 @@ export default function Studio() {
                     })
                   }
                 >
-                  编辑资料
+                  {t("编辑资料")}
                 </button>
                 <div className="setting-line">
                   <Bell size={18} />
                   <div>
                     <strong>
-                      邮件提醒
-                      {current.email_notifications ? "已开启" : "已关闭"}
+                      {t("邮件提醒")}
+                      {current.email_notifications ? t("已开启") : t("已关闭")}
                     </strong>
                     <p>
-                      预约、改期、取消、训练计划及课前提醒。账号验证和密码重置邮件不受此开关影响。
+                      {t(
+                        "预约、改期、取消、训练计划及课前提醒。账号验证和密码重置邮件不受此开关影响。",
+                      )}
                     </p>
                   </div>
                 </div>
@@ -4067,23 +4279,25 @@ export default function Studio() {
                     className="text-btn"
                     onClick={() =>
                       setDialog({
-                        title: "修改登录邮箱",
-                        description:
+                        title: t("修改登录邮箱"),
+                        description: t(
                           "新旧邮箱可能都需要验证；完成后才会更新登录邮箱。",
+                        ),
                         fields: [
                           {
                             name: "email",
-                            label: "新邮箱",
+                            label: t("新邮箱"),
                             type: "email",
                             required: true,
                           },
                         ],
-                        submit: "发送验证邮件",
-                        success:
+                        submit: t("发送验证邮件"),
+                        success: t(
                           "请检查新旧邮箱中的验证邮件，并在当前浏览器完成验证。",
+                        ),
                         action: async (v) => {
                           if (demo)
-                            throw new Error("演示模式不发送真实验证邮件");
+                            throw new Error(t("演示模式不发送真实验证邮件"));
                           const { error } = await supabase!.auth.updateUser(
                             { email: v.email },
                             {
@@ -4095,24 +4309,24 @@ export default function Studio() {
                       })
                     }
                   >
-                    修改邮箱
+                    {t("修改邮箱")}
                   </button>
                   <button
                     className="text-btn"
                     onClick={() =>
                       setDialog({
-                        title: "修改密码",
+                        title: t("修改密码"),
                         fields: [
                           {
                             name: "password",
-                            label: "新密码（至少 8 位）",
+                            label: t("新密码（至少 8 位）"),
                             type: "password",
                             minLength: 8,
                             required: true,
                           },
                           {
                             name: "confirm_password",
-                            label: "确认新密码",
+                            label: t("确认新密码"),
                             type: "password",
                             minLength: 8,
                             required: true,
@@ -4120,10 +4334,11 @@ export default function Studio() {
                         ],
                         action: async (v) => {
                           if (v.password.length < 8)
-                            throw new Error("密码至少需要 8 位");
+                            throw new Error(t("密码至少需要 8 位"));
                           if (v.password !== v.confirm_password)
-                            throw new Error("两次输入的密码不一致");
-                          if (demo) throw new Error("演示模式不修改真实密码");
+                            throw new Error(t("两次输入的密码不一致"));
+                          if (demo)
+                            throw new Error(t("演示模式不修改真实密码"));
                           const { error } = await supabase!.auth.updateUser({
                             password: v.password,
                           });
@@ -4132,7 +4347,7 @@ export default function Studio() {
                       })
                     }
                   >
-                    修改密码
+                    {t("修改密码")}
                   </button>
                 </div>
               </section>
@@ -4140,39 +4355,40 @@ export default function Studio() {
                 <section className="panel settings-card">
                   <div className="row gap">
                     <Settings2 size={22} />
-                    <h2>工作室设置</h2>
+                    <h2>{t("工作室设置")}</h2>
                   </div>
                   <dl>
-                    <dt>网站名称</dt>
+                    <dt>{t("网站名称")}</dt>
                     <dd>{data.settings.studio_name}</dd>
-                    <dt>预约时区</dt>
+                    <dt>{t("预约时区")}</dt>
                     <dd>{zone}</dd>
-                    <dt>训练地点</dt>
+                    <dt>{t("训练地点")}</dt>
                     <dd>{data.settings.location}</dd>
-                    <dt>推荐码注册</dt>
+                    <dt>{t("推荐码注册")}</dt>
                     <dd>
                       {data.settings.allow_referral_signup
-                        ? "允许学员推荐码直接注册"
-                        : "需要教练邀请码"}
+                        ? t("允许学员推荐码直接注册")
+                        : t("需要教练邀请码")}
                     </dd>
                   </dl>
                   <button
                     className="btn secondary"
                     onClick={() =>
                       setDialog({
-                        title: "工作室设置",
-                        description:
+                        title: t("工作室设置"),
+                        description: t(
                           "时区变更只改变显示方式，已预约课程的实际时刻不变。",
+                        ),
                         fields: [
                           {
                             name: "p_name",
-                            label: "网站名称",
+                            label: t("网站名称"),
                             value: data.settings.studio_name,
                             required: true,
                           },
                           {
                             name: "p_timezone",
-                            label: "预约时区",
+                            label: t("预约时区"),
                             type: "select",
                             value: zone,
                             options: zones.map((z) => ({ value: z, label: z })),
@@ -4180,13 +4396,13 @@ export default function Studio() {
                           },
                           {
                             name: "p_location",
-                            label: "训练地点",
+                            label: t("训练地点"),
                             value: data.settings.location,
                             required: true,
                           },
                           {
                             name: "p_referrals",
-                            label: "允许学员推荐码直接用于注册",
+                            label: t("允许学员推荐码直接用于注册"),
                             type: "checkbox",
                             value: data.settings.allow_referral_signup,
                           },
@@ -4199,14 +4415,16 @@ export default function Studio() {
                       })
                     }
                   >
-                    编辑工作室
+                    {t("编辑工作室")}
                   </button>
                   <div className="setting-line">
                     <ShieldCheck size={18} />
                     <div>
-                      <strong>教练最高管理权限</strong>
+                      <strong>{t("教练最高管理权限")}</strong>
                       <p>
-                        学员不能修改角色、邀请码额度或他人的训练计划。所有权限均由数据库验证。
+                        {t(
+                          "学员不能修改角色、邀请码额度或他人的训练计划。所有权限均由数据库验证。",
+                        )}
                       </p>
                     </div>
                   </div>
@@ -4216,9 +4434,11 @@ export default function Studio() {
                 <section className="panel settings-card full-span">
                   <div className="section-head">
                     <div>
-                      <h2>Resend 联系人同步</h2>
+                      <h2>{t("Resend 联系人同步")}</h2>
                       <p className="muted">
-                        系统每分钟自动检查，无需手动同步。邮箱验证后加入专属分组；关闭通知或停用账号会移出。不会更改其他业务的全局退订设置。
+                        {t(
+                          "系统每分钟自动检查，无需手动同步。邮箱验证后加入专属分组；关闭通知或停用账号会移出。不会更改其他业务的全局退订设置。",
+                        )}
                       </p>
                     </div>
                     <button
@@ -4226,7 +4446,7 @@ export default function Studio() {
                       disabled={busy}
                       onClick={async () => {
                         if (demo) {
-                          notify("演示模式不同步联系人");
+                          notify(t("演示模式不同步联系人"));
                           return;
                         }
                         setBusy(true);
@@ -4244,34 +4464,41 @@ export default function Studio() {
                           });
                           const result = await response.json();
                           if (!response.ok)
-                            throw new Error(result.error || "同步失败");
+                            throw new Error(result.error || t("同步失败"));
                           if (!result.configured)
                             throw new Error(
-                              "请先在 Vercel 配置联系人管理 Key 和 Segment ID",
+                              t(
+                                "请先在 Vercel 配置联系人管理 Key 和 Segment ID",
+                              ),
                             );
                           notify(
-                            `本轮同步 ${result.synced} 位，失败 ${result.failed} 位。其余将自动继续。`,
+                            t(
+                              "本轮同步 {0} 位，失败 {1} 位。其余将自动继续。",
+                              [result.synced, result.failed],
+                            ),
                           );
                           await load();
                         } catch (e) {
-                          setError(e instanceof Error ? e.message : "同步失败");
+                          setError(
+                            e instanceof Error ? e.message : t("同步失败"),
+                          );
                         } finally {
                           setBusy(false);
                         }
                       }}
                     >
-                      同步 / 重试
+                      {t("同步 / 重试")}
                     </button>
                   </div>
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
-                          <th>学员</th>
-                          <th>同步状态</th>
-                          <th>分组</th>
-                          <th>最近同步</th>
-                          <th>说明</th>
+                          <th>{t("学员")}</th>
+                          <th>{t("同步状态")}</th>
+                          <th>{t("分组")}</th>
+                          <th>{t("最近同步")}</th>
+                          <th>{t("说明")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4284,7 +4511,7 @@ export default function Studio() {
                             query,
                             current.id,
                           ]}
-                          label="联系人同步"
+                          label={t("联系人同步")}
                           tableColumns={5}
                         >
                           {(pageItems, pageOffset) =>
@@ -4297,17 +4524,19 @@ export default function Studio() {
                                     label={
                                       (
                                         {
-                                          pending: "等待自动同步",
-                                          processing: "同步中",
-                                          failed: "同步失败",
-                                          synced: "已同步",
+                                          pending: t("等待自动同步"),
+                                          processing: t("同步中"),
+                                          failed: t("同步失败"),
+                                          synced: t("已同步"),
                                         } as Record<string, string>
                                       )[c.state]
                                     }
                                   />
                                 </td>
                                 <td>
-                                  {c.in_segment ? "已加入" : "未加入 / 已移出"}
+                                  {c.in_segment
+                                    ? t("已加入")
+                                    : t("未加入 / 已移出")}
                                 </td>
                                 <td>
                                   {c.synced_at
@@ -4327,7 +4556,7 @@ export default function Studio() {
                     </table>
                   </div>
                   {!data.contact_sync.length && (
-                    <Empty text="学员验证邮箱后，会在这里显示同步进度" />
+                    <Empty text={t("学员验证邮箱后，会在这里显示同步进度")} />
                   )}
                 </section>
               )}
@@ -4335,10 +4564,11 @@ export default function Studio() {
                 <section className="panel settings-card full-span">
                   <div className="section-head">
                     <div>
-                      <h2>邮件投递记录</h2>
+                      <h2>{t("邮件投递记录")}</h2>
                       <p className="muted">
-                        预约通知自动入队，定时任务负责投递；提醒将在课程开始前
-                        24 小时进入发送时间。
+                        {t(
+                          "预约通知自动入队，定时任务负责投递；提醒将在课程开始前 24 小时进入发送时间。",
+                        )}
                       </p>
                     </div>
                     <button
@@ -4346,7 +4576,7 @@ export default function Studio() {
                       disabled={busy}
                       onClick={async () => {
                         if (demo) {
-                          notify("演示模式不发送邮件");
+                          notify(t("演示模式不发送邮件"));
                           return;
                         }
                         setBusy(true);
@@ -4362,9 +4592,13 @@ export default function Studio() {
                           });
                           const result = await r.json();
                           if (!r.ok)
-                            throw new Error(result.error || "处理失败");
+                            throw new Error(result.error || t("处理失败"));
                           notify(
-                            `本轮已发送 ${result.sent} 封，跳过 ${result.skipped} 封，失败 ${result.failed} 封`,
+                            t("本轮已发送 {0} 封，跳过 {1} 封，失败 {2} 封", [
+                              result.sent,
+                              result.skipped,
+                              result.failed,
+                            ]),
                           );
                           await load();
                         } catch (e) {
@@ -4375,19 +4609,19 @@ export default function Studio() {
                       }}
                     >
                       <RefreshCw size={15} />
-                      处理待发邮件
+                      {t("处理待发邮件")}
                     </button>
                   </div>
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
-                          <th>收件人</th>
-                          <th>主题</th>
-                          <th>计划发送时间</th>
-                          <th>状态</th>
-                          <th>尝试次数</th>
-                          <th>失败说明</th>
+                          <th>{t("收件人")}</th>
+                          <th>{t("主题")}</th>
+                          <th>{t("计划发送时间")}</th>
+                          <th>{t("状态")}</th>
+                          <th>{t("尝试次数")}</th>
+                          <th>{t("失败说明")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4402,7 +4636,7 @@ export default function Studio() {
                             query,
                             current.id,
                           ]}
-                          label="邮件记录"
+                          label={t("邮件记录")}
                           tableColumns={6}
                         >
                           {(pageItems, pageOffset) =>
@@ -4426,7 +4660,7 @@ export default function Studio() {
                     </table>
                   </div>
                   {!data.email_jobs.length && (
-                    <Empty text="还没有邮件投递记录" />
+                    <Empty text={t("还没有邮件投递记录")} />
                   )}
                 </section>
               )}
@@ -4435,10 +4669,10 @@ export default function Studio() {
           <footer className="page-footer">
             <span>
               {data.settings.studio_name} <span className="separator">/</span>{" "}
-              每一次进步，都算数。
+              {t("每一次进步，都算数。")}
             </span>
             <span>
-              <ShieldCheck size={13} /> 私密 · 专属 · 有序
+              <ShieldCheck size={13} /> {t("私密 · 专属 · 有序")}
             </span>
           </footer>
         </main>
@@ -4447,7 +4681,7 @@ export default function Studio() {
         <DialogView
           dialog={dialog}
           busy={busy}
-          error={error}
+          error={t(error)}
           onClose={() => {
             setDialog(null);
             setError("");
