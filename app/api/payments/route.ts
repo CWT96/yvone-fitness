@@ -124,12 +124,7 @@ export async function POST(request: Request) {
               currency: order.currency.toLowerCase(),
               unit_amount: order.unit_amount,
               product_data: {
-                name:
-                  order.package === "single"
-                    ? language === "en"
-                      ? "Yvonne Fitness · Personal training session"
-                      : "Yvonne Fitness · 单次私教训练"
-                    : `Yvonne Fitness · ${translate(packageOptions[order.package as PackageKind].label, language)}${language === "en" ? " (no automatic renewal)" : "（不自动续费）"}`,
+                name: `Yvonne Fitness · ${translate(packageOptions[order.package as PackageKind].label, language)}`,
               },
             },
           },
@@ -137,13 +132,21 @@ export async function POST(request: Request) {
         custom_text: {
           submit: {
             message:
-              order.package !== "single"
+              packageOptions[order.package as PackageKind].category === "online"
                 ? language === "en"
-                  ? `One-time payment for ${packageOptions[order.package as PackageKind].months} month(s), starting on the payment date. Renew manually; no automatic renewal.`
-                  : `一次付款，购买 ${packageOptions[order.package as PackageKind].months} 个月。有效期从付款当日开始；到期后手动购买，不自动续费。`
-                : language === "en"
-                  ? "Session credits are added after payment is confirmed. The studio booking and no-show policy applies."
-                  : "付款确认后自动增加对应课时，预约与未到场规则按工作室约定执行。",
+                  ? `Online coaching for ${packageOptions[order.package as PackageKind].months} month(s), starting on payment. No in-person sessions; no automatic renewal.`
+                  : `线上指导 ${packageOptions[order.package as PackageKind].months} 个月，自付款当日起计算；不含线下课程，不自动续费。`
+                : ["starter", "standard", "premium"].includes(order.package)
+                  ? language === "en"
+                    ? `${packageOptions[order.package as PackageKind].sessions} in-person sessions, valid for 3 months from payment. Unused sessions expire.`
+                    : `${packageOptions[order.package as PackageKind].sessions} 节线下课，自付款日起 3 个月内使用，过期未使用课时作废。`
+                  : order.package !== "single"
+                    ? language === "en"
+                      ? `Unlimited in-person training for ${packageOptions[order.package as PackageKind].months} month(s), starting on payment. No automatic renewal.`
+                      : `线下不限次 ${packageOptions[order.package as PackageKind].months} 个月，自付款当日起计算，不自动续费。`
+                    : language === "en"
+                      ? "One-hour in-person sessions. Credits are added after payment; book your sessions separately."
+                      : "每节 1 小时线下私教，付款后增加课时，训练时间另行预约。",
           },
         },
         expires_at: Math.floor(Date.parse(order.created_at) / 1000) + 3600,

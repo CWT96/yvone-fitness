@@ -1,4 +1,5 @@
 "use client";
+import { packageOptions, salePackages } from "@/lib/package-options";
 import { rememberVerificationEmail } from "@/lib/email-verification";
 import { LanguageSelect, useLanguage } from "@/components/language-provider";
 
@@ -54,6 +55,7 @@ import { bookingMatches, memberNeeds } from "@/lib/workflows";
 import { SessionAccounts } from "@/components/session-accounts";
 import {
   memberSessionStats,
+  balanceAfterLesson,
   membershipForDate,
   validateCredit,
   defaultMonthlyEnd,
@@ -557,11 +559,18 @@ export default function Studio() {
     };
     const readAccounts = async () => {
       try {
-        const [session_entries, monthly_memberships] = await Promise.all([
-          read("session_entries"),
-          read("monthly_memberships"),
-        ]);
-        return { session_entries, monthly_memberships, credits_ready: true };
+        const [session_entries, monthly_memberships, online_memberships] =
+          await Promise.all([
+            read("session_entries"),
+            read("monthly_memberships"),
+            read("online_memberships"),
+          ]);
+        return {
+          session_entries,
+          monthly_memberships,
+          online_memberships,
+          credits_ready: true,
+        };
       } catch (e) {
         if (["42P01", "PGRST205"].includes((e as { code?: string }).code || ""))
           return {
@@ -840,7 +849,8 @@ export default function Studio() {
         });
       }
       if (
-        fn === "record_session_credit" &&
+        (fn === "record_session_credit" ||
+          fn === "record_session_credit_with_expiry") &&
         !n.session_entries.some((e) => e.id === a.p_id)
       )
         n.session_entries.push({
@@ -848,6 +858,7 @@ export default function Studio() {
           member_id: String(a.p_member),
           kind: a.p_kind as "purchase" | "adjustment",
           quantity: Number(a.p_quantity),
+          expires_on: a.p_expiry ? String(a.p_expiry) : null,
           note: String(a.p_note),
           amount: a.p_amount == null ? null : Number(a.p_amount),
           currency: String(a.p_currency),
@@ -1063,21 +1074,55 @@ export default function Studio() {
               : r,
           );
       }
-      if (fn === "save_member_package_prices") {
+      if (fn === "save_member_catalog_prices") {
+        const previous = n.member_prices.find(
+          (p) => p.member_id === a.p_member,
+        );
         n.member_prices = n.member_prices.filter(
           (p) => p.member_id !== a.p_member,
         );
         n.member_prices.push({
+          ...previous,
           id,
           member_id: String(a.p_member),
-          single_price: a.p_single === null ? null : Number(a.p_single),
-          monthly_price: a.p_monthly === null ? null : Number(a.p_monthly),
-          quarterly_price: a.p_quarterly == null ? null : Number(a.p_quarterly),
-          annual_price: a.p_annual == null ? null : Number(a.p_annual),
+          single_price: null,
+          monthly_price: null,
+          ...Object.fromEntries(
+            salePackages.map((k) => [
+              packageOptions[k].priceKey,
+              (a.p_prices as Record<string, number | null>)[k] ?? null,
+            ]),
+          ),
           currency: String(a.p_currency),
           updated_at: now,
         });
       }
+      if (
+        fn === "record_online_membership" &&
+        !(n.online_memberships || []).some((m) => m.id === a.p_id)
+      )
+        n.online_memberships = [
+          ...(n.online_memberships || []),
+          {
+            id: String(a.p_id),
+            member_id: String(a.p_member),
+            starts_on: String(a.p_start),
+            ends_on: String(a.p_end),
+            note: String(a.p_note),
+            amount: a.p_amount == null ? null : Number(a.p_amount),
+            currency: String(a.p_currency),
+            created_at: now,
+            cancelled_at: null,
+            cancel_reason: null,
+          },
+        ];
+      if (fn === "cancel_online_membership")
+        n.online_memberships = (n.online_memberships || []).map((m) =>
+          m.id === a.p_id
+            ? { ...m, cancelled_at: now, cancel_reason: String(a.p_reason) }
+            : m,
+        );
+
       return n;
     });
   }
@@ -1249,7 +1294,7 @@ export default function Studio() {
             ? t("此课程在包月有效期内，只记录缺席，不扣按次课时。")
             : t(
                 "确认后扣除 1 节按次课时，预计余额 {0} 节。余额不足也会扣课，请核对是否遗漏购课。",
-                [memberSessionStats(data, b.member_id).balance - 1],
+                [balanceAfterLesson(data, b)],
               ),
         ],
       ),
@@ -1538,7 +1583,18 @@ export default function Studio() {
           step: 1,
           value: adjustment ? "" : 1,
         },
-        ...(!adjustment ? creditFields(memberId) : []),
+        ...(!adjustment
+          ? [
+              ...creditFields(memberId),
+              {
+                name: "p_expiry",
+                label: t(
+                  "有效截止日期（课次套餐请填购买日起 3 个月；单次可留空）",
+                ),
+                type: "date" as const,
+              },
+            ]
+          : []),
         {
           name: "p_note",
           label: t("说明 / 原因（学员可见）"),
@@ -1554,10 +1610,11 @@ export default function Studio() {
           adjustment ? "adjustment" : "purchase",
           v.p_note,
         );
-        await mutate("record_session_credit", {
+        await mutate("record_session_credit_with_expiry", {
           p_id: request,
           p_member: memberId,
           p_kind: adjustment ? "adjustment" : "purchase",
+          p_expiry: adjustment ? null : v.p_expiry || null,
           p_quantity: Number(v.p_quantity),
           p_note: v.p_note,
           p_amount: v.p_amount ? Number(v.p_amount) : null,
@@ -1566,15 +1623,17 @@ export default function Studio() {
       },
     });
   }
-  function recordMonthly(memberId: string) {
+  function recordMonthly(memberId: string, online = false) {
     const request = crypto.randomUUID();
     const start = displayTime(new Date().toISOString(), zone, "yyyy-MM-dd");
     setDialog({
-      title: t("录入包月 · {0}", [name(memberId)]),
-      description: t(
-        "按 {0} 记录有效期，含开始和结束日。有效期内不限次数；以后确认完成的课程按上课日期判断是否属于包月。不会回改已经扣课的流水，如有误请另作课时调整。不会发起支付。",
-        [zone],
-      ),
+      title: online ? t("录入线上服务") : t("录入包月 · {0}", [name(memberId)]),
+      description: online
+        ? t("录入线上指导的有效期和金额，不增加线下课时，不发起付款。")
+        : t(
+            "按 {0} 记录有效期，含开始和结束日。有效期内不限次数；以后确认完成的课程按上课日期判断是否属于包月。不会回改已经扣课的流水，如有误请另作课时调整。不会发起支付。",
+            [zone],
+          ),
       fields: [
         {
           name: "p_start",
@@ -1593,13 +1652,15 @@ export default function Studio() {
         ...creditFields(memberId),
         {
           name: "p_note",
-          label: t("包月说明（学员可见）"),
+          label: online
+            ? t("说明 / 原因（学员可见）")
+            : t("包月说明（学员可见）"),
           type: "textarea",
           required: true,
         },
       ],
-      submit: t("确认录入包月"),
-      success: t("包月已录入"),
+      submit: online ? t("确认入账") : t("确认录入包月"),
+      success: online ? t("线上服务已录入") : t("包月已录入"),
       action: async (v) => {
         if (
           !v.p_start ||
@@ -1609,7 +1670,10 @@ export default function Studio() {
         )
           throw new Error(t("请选择有效日期，最长 366 天"));
         if (
-          data.monthly_memberships.some(
+          (online
+            ? data.online_memberships || []
+            : data.monthly_memberships
+          ).some(
             (m) =>
               m.member_id === memberId &&
               !m.cancelled_at &&
@@ -1618,25 +1682,32 @@ export default function Studio() {
           )
         )
           throw new Error(t("有效期与已有包月重叠，请核对日期"));
-        await mutate("record_monthly_membership", {
-          p_id: request,
-          p_member: memberId,
-          p_start: v.p_start,
-          p_end: v.p_end,
-          p_note: v.p_note,
-          p_amount: v.p_amount ? Number(v.p_amount) : null,
-          p_currency: v.p_currency,
-        });
+        await mutate(
+          online ? "record_online_membership" : "record_monthly_membership",
+          {
+            p_id: request,
+            p_member: memberId,
+            p_start: v.p_start,
+            p_end: v.p_end,
+            p_note: v.p_note,
+            p_amount: v.p_amount ? Number(v.p_amount) : null,
+            p_currency: v.p_currency,
+          },
+        );
       },
     });
   }
-  function cancelMonthly(m: MonthlyMembership) {
+  function cancelMonthly(m: MonthlyMembership, online = false) {
     setDialog({
-      title: t("作废包月 · {0}", [name(m.member_id)]),
-      description: t(
-        "{0} 至 {1}。作废后保留原始记录，不再覆盖之后确认完成的课程，也不会重算已完成课程或自动退款。录错可作废后重新录入。",
-        [m.starts_on, m.ends_on],
-      ),
+      title: online
+        ? t("作废线上服务")
+        : t("作废包月 · {0}", [name(m.member_id)]),
+      description: online
+        ? t("作废后保留原记录并结束线上服务，不自动退款。")
+        : t(
+            "{0} 至 {1}。作废后保留原始记录，不再覆盖之后确认完成的课程，也不会重算已完成课程或自动退款。录错可作废后重新录入。",
+            [m.starts_on, m.ends_on],
+          ),
       fields: [
         {
           name: "p_reason",
@@ -1647,10 +1718,13 @@ export default function Studio() {
       ],
       submit: t("确认作废"),
       action: (v) =>
-        mutate("cancel_monthly_membership", {
-          p_id: m.id,
-          p_reason: v.p_reason,
-        }),
+        mutate(
+          online ? "cancel_online_membership" : "cancel_monthly_membership",
+          {
+            p_id: m.id,
+            p_reason: v.p_reason,
+          },
+        ),
     });
   }
   function editMemberPrice(memberId: string) {
@@ -1658,46 +1732,19 @@ export default function Studio() {
     setDialog({
       title: t("设置 {0} 的专属价格", [name(memberId)]),
       description: t(
-        "只有你和这位学员能看到。1、3、12 个月均不限次数，填写整个周期总金额；留空表示尚未设置。保存价格不会发起收款。",
+        "填写每个方案的总金额；单次为每节金额。留空表示未开放购买。线上服务与线下课时分开，保存不会发起收款。",
       ),
       submit: t("保存专属价格"),
       fields: [
-        {
-          name: "single",
-          label: t("单次训练金额"),
-          type: "number",
-          value: price?.single_price ?? "",
+        ...salePackages.map((k) => ({
+          name: k,
+          label: t(packageOptions[k].label),
+          type: "number" as const,
+          value: price?.[packageOptions[k].priceKey] ?? "",
           min: 0,
           max: 999999.99,
           step: 0.01,
-        },
-        {
-          name: "monthly",
-          label: t("包月金额（不限次数）"),
-          type: "number",
-          value: price?.monthly_price ?? "",
-          min: 0,
-          max: 999999.99,
-          step: 0.01,
-        },
-        {
-          name: "quarterly",
-          label: t("3 个月套餐总金额（不限次数）"),
-          type: "number",
-          value: price?.quarterly_price ?? "",
-          min: 0,
-          max: 999999.99,
-          step: 0.01,
-        },
-        {
-          name: "annual",
-          label: t("12 个月套餐总金额（不限次数）"),
-          type: "number",
-          value: price?.annual_price ?? "",
-          min: 0,
-          max: 999999.99,
-          step: 0.01,
-        },
+        })),
         {
           name: "currency",
           label: t("币种"),
@@ -1711,12 +1758,11 @@ export default function Studio() {
         },
       ],
       action: (v) =>
-        mutate("save_member_package_prices", {
+        mutate("save_member_catalog_prices", {
           p_member: memberId,
-          p_single: v.single === "" ? null : Number(v.single),
-          p_monthly: v.monthly === "" ? null : Number(v.monthly),
-          p_quarterly: v.quarterly === "" ? null : Number(v.quarterly),
-          p_annual: v.annual === "" ? null : Number(v.annual),
+          p_prices: Object.fromEntries(
+            salePackages.map((k) => [k, v[k] === "" ? null : Number(v[k])]),
+          ),
           p_currency: v.currency,
         }),
     });
@@ -2323,7 +2369,7 @@ export default function Studio() {
                         onClick={() =>
                           setDialog({
                             title: t("确认课程完成"),
-                            description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? t("此课程在包月有效期内，确认后记录上课次数，不扣按次课时。") : t("确认后扣除 1 节按次课时，预计余额 {0} 节。余额不足也会记录完成，请核对是否遗漏购课。", [memberSessionStats(data, b.member_id).balance - 1])) : t("课时账户尚未启用，本次仅记录课程完成。")}`,
+                            description: `${name(b.member_id)} · ${displayTime(b.slots.starts_at, zone)}。${data.credits_ready ? (membershipForDate(data.monthly_memberships, b.member_id, displayTime(b.slots.starts_at, zone, "yyyy-MM-dd")) ? t("此课程在包月有效期内，确认后记录上课次数，不扣按次课时。") : t("确认后扣除 1 节按次课时，预计余额 {0} 节。余额不足也会记录完成，请核对是否遗漏购课。", [balanceAfterLesson(data, b)])) : t("课时账户尚未启用，本次仅记录课程完成。")}`,
                             fields: [],
                             submit: t("标记完成"),
                             action: () =>
@@ -2657,6 +2703,21 @@ export default function Studio() {
                   {coach ? t("管理课时") : t("查看课时明细")}
                 </button>
               </div>
+              {!coach && memberSessionStats(data, current.id).online && (
+                <div className="notice">
+                  <p>
+                    {t("线上指导有效至 {0}，不包含线下课程。", [
+                      memberSessionStats(data, current.id).online!.ends_on,
+                    ])}
+                  </p>
+                  <button
+                    className="text-btn"
+                    onClick={() => navigate("credits")}
+                  >
+                    {t("查看明细")}
+                  </button>
+                </div>
+              )}
               {coach && (
                 <section className="work-queue" aria-label={t("待办事项")}>
                   <button onClick={() => openBookings("pending")}>
@@ -4111,23 +4172,27 @@ export default function Studio() {
               onCredit={recordCredit}
               onMonthly={recordMonthly}
               onCancelMonthly={cancelMonthly}
+              onCancelOnline={(m) => cancelMonthly(m, true)}
+              onOnline={(id) => recordMonthly(id, true)}
             />
           )}
           {tab === "packages" && (
             <>
-              <div className="notice">
-                <Wallet size={20} />
-                <div>
-                  <strong>
-                    {coach ? t("按学员设置专属价格") : t("你的专属课程方案")}
-                  </strong>
-                  <p>
-                    {t(
-                      "单次训练，以及 1、3、12 个月不限次套餐。金额为整个周期总价，仅本人和教练可见；到期手动购买，不自动续费。",
-                    )}
-                  </p>
+              {coach && (
+                <div className="notice">
+                  <Wallet size={20} />
+                  <div>
+                    <strong>
+                      {coach ? t("按学员设置专属价格") : t("你的专属课程方案")}
+                    </strong>
+                    <p>
+                      {t(
+                        "按学员设置线下单次、课次套餐、不限次包月及线上指导的价格。留空的方案不能购买；到期手动购买，不自动续费。",
+                      )}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
               {coach ? (
                 <section className="panel">
                   <div className="table-wrap">
@@ -4135,10 +4200,7 @@ export default function Studio() {
                       <thead>
                         <tr>
                           <th>{t("学员")}</th>
-                          <th>{t("单次训练")}</th>
-                          <th>{t("1 个月")}</th>
-                          <th>{t("3 个月")}</th>
-                          <th>{t("12 个月")}</th>
+                          <th>{t("已设置的方案与金额")}</th>
                           <th>{t("操作")}</th>
                         </tr>
                       </thead>
@@ -4153,7 +4215,7 @@ export default function Studio() {
                             current.id,
                           ]}
                           label={t("专属价格")}
-                          tableColumns={6}
+                          tableColumns={3}
                         >
                           {(pageItems, pageOffset) =>
                             pageItems.map((m) => {
@@ -4164,19 +4226,28 @@ export default function Studio() {
                                 <tr key={m.id}>
                                   <td>{m.full_name}</td>
                                   <td>
-                                    {formatPrice(p?.single_price, p?.currency)}
-                                  </td>
-                                  <td>
-                                    {formatPrice(p?.monthly_price, p?.currency)}
-                                  </td>
-                                  <td>
-                                    {formatPrice(
-                                      p?.quarterly_price,
-                                      p?.currency,
-                                    )}
-                                  </td>
-                                  <td>
-                                    {formatPrice(p?.annual_price, p?.currency)}
+                                    <div className="catalog-price-summary">
+                                      {salePackages
+                                        .filter(
+                                          (k) =>
+                                            p?.[packageOptions[k].priceKey] !=
+                                            null,
+                                        )
+                                        .map((k) => (
+                                          <span key={k}>
+                                            {t(packageOptions[k].label)} ·{" "}
+                                            {formatPrice(
+                                              p?.[packageOptions[k].priceKey],
+                                              p?.currency,
+                                            )}
+                                          </span>
+                                        ))}
+                                      {!salePackages.some(
+                                        (k) =>
+                                          p?.[packageOptions[k].priceKey] !=
+                                          null,
+                                      ) && t("待教练设置")}
+                                    </div>
                                   </td>
                                   <td>
                                     <button

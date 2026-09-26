@@ -49,6 +49,16 @@ export function localizedNotificationBody(body: string, language: Language) {
         }
         return `${labels[key]}: ${localized}`;
       }
+      const bundle = line.match(
+        /^线下套餐课时已入账：(\d+) 节，有效至 (\d{4}-\d{2}-\d{2})（含当日）。$/,
+      );
+      if (bundle)
+        return `${bundle[1]} in-person session credits added, valid through ${bundle[2]} (inclusive).`;
+      const online = line.match(
+        /^线上指导已开通：(\d{4}-\d{2}-\d{2}) 至 (\d{4}-\d{2}-\d{2})（含结束日）。不包含线下课程，不自动续费。$/,
+      );
+      if (online)
+        return `Online coaching activated: ${online[1]} to ${online[2]} (inclusive). No in-person sessions; no automatic renewal.`;
       const credits = line.match(
         /^(?:已增加 (\d+) 节课时。|按次课时已入账：(\d+) 节。)$/,
       );

@@ -110,6 +110,13 @@ export type MemberPrice = {
   monthly_price: number | null;
   quarterly_price?: number | null;
   annual_price?: number | null;
+  starter_price?: number | null;
+  standard_price?: number | null;
+  premium_price?: number | null;
+  online_monthly_price?: number | null;
+  online_quarterly_price?: number | null;
+  online_annual_price?: number | null;
+
   currency: string;
   updated_at: string;
 };
@@ -122,6 +129,7 @@ export type ContactSync = {
   in_segment: boolean;
 };
 export type Data = {
+  online_memberships?: MonthlyMembership[];
   session_entries: SessionEntry[];
   monthly_memberships: MonthlyMembership[];
   credits_ready: boolean;
@@ -140,6 +148,7 @@ export type Data = {
   settings: Settings;
 };
 export type SessionEntry = {
+  expires_on?: string | null;
   id: string;
   member_id: string;
   kind:

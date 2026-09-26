@@ -15,6 +15,8 @@ type Props = {
   onCredit: (id: string, adjustment?: boolean) => void;
   onMonthly: (id: string) => void;
   onCancelMonthly: (membership: MonthlyMembership) => void;
+  onCancelOnline: (membership: MonthlyMembership) => void;
+  onOnline: (id: string) => void;
 };
 export function SessionAccounts({
   data,
@@ -24,6 +26,8 @@ export function SessionAccounts({
   onCredit,
   onMonthly,
   onCancelMonthly,
+  onCancelOnline,
+  onOnline,
 }: Props) {
   const { t, displayTime, language } = useLanguage();
   const [search, setSearch] = useState("");
@@ -298,10 +302,11 @@ export function SessionAccounts({
                 t("{0} 节", [stats.balance]),
                 stats.balance < 0
                   ? t("课时余额待核对")
-                  : t("购课 {0} + 调整 {1} − 已扣 {2}", [
+                  : t("购课 {0} + 调整 {1} − 已扣 {2} − 过期 {3}", [
                       stats.purchased,
                       stats.adjusted,
                       stats.used,
+                      stats.expired,
                     ]),
               ],
               [
@@ -351,6 +356,111 @@ export function SessionAccounts({
                 {t("。预约不会提前扣课。")}
               </p>
             </div>
+          )}
+          <section className="panel accounts-panel">
+            <div className="section-head">
+              <div>
+                <h2>{t("线上指导记录")}</h2>
+                <p className="muted">
+                  {t("线上服务独立计时，不增加线下课时，也不抵扣线下训练。")}
+                </p>
+              </div>
+              {coach && (
+                <button
+                  className="btn secondary small"
+                  onClick={() => onOnline(selected.id)}
+                >
+                  {t("录入线上服务")}
+                </button>
+              )}
+            </div>
+            <Paginated
+              items={(data.online_memberships || [])
+                .filter((m) => m.member_id === selected.id)
+                .sort((a, b) => b.starts_on.localeCompare(a.starts_on))}
+              resetKey={[memberId]}
+              label={t("线上指导记录")}
+            >
+              {(items) =>
+                items.map((m) => (
+                  <article className="membership-row" key={m.id}>
+                    <div>
+                      <strong>
+                        {m.starts_on} — {m.ends_on}
+                      </strong>
+                      <p>
+                        {m.cancelled_at
+                          ? t("已作废")
+                          : m.starts_on > today
+                            ? t("尚未开始")
+                            : m.ends_on < today
+                              ? t("已到期")
+                              : t("有效中")}{" "}
+                        · {money(m.amount, m.currency)}
+                      </p>
+                      <small>
+                        {localizedSystemNote(m.note, language)}
+                        {m.cancel_reason
+                          ? t(" · 作废原因：{0}", [m.cancel_reason])
+                          : ""}
+                      </small>
+                    </div>
+                    {coach && !m.cancelled_at && (
+                      <button
+                        className="text-btn"
+                        onClick={() => onCancelOnline(m)}
+                      >
+                        {t("作废")}
+                      </button>
+                    )}
+                  </article>
+                ))
+              }
+            </Paginated>
+            {!(data.online_memberships || []).some(
+              (m) => m.member_id === selected.id,
+            ) && <p className="muted">{t("暂无线上服务记录。")}</p>}
+          </section>
+          {data.session_entries.some(
+            (e) => e.member_id === selected.id && e.expires_on,
+          ) && (
+            <section className="panel accounts-panel">
+              <h2>{t("课次套餐有效期")}</h2>
+              <p className="muted">
+                {t(
+                  "结束日当天仍可使用。按上课日期优先消耗即将到期的课时，过期未用课时不计入可用余额。",
+                )}
+              </p>
+              <Paginated
+                items={data.session_entries
+                  .filter((e) => e.member_id === selected.id && e.expires_on)
+                  .sort((a, b) =>
+                    (b.expires_on || "").localeCompare(a.expires_on || ""),
+                  )}
+                resetKey={[memberId]}
+                label={t("课次套餐有效期")}
+              >
+                {(items) =>
+                  items.map((e) => (
+                    <article className="membership-row" key={e.id}>
+                      <div>
+                        <strong>
+                          {t("{0} 节训练", [e.quantity])} · {e.expires_on}
+                        </strong>
+                        <p>
+                          {e.expires_on! < today
+                            ? t("已到期")
+                            : t("可用 {0} 节", [
+                                stats.lots.find((l) => l.id === e.id)
+                                  ?.remaining || 0,
+                              ])}
+                        </p>
+                      </div>
+                    </article>
+                  ))
+                }
+              </Paginated>
+            </section>
           )}
           <section className="panel accounts-panel">
             <h2>{t("包月记录")}</h2>

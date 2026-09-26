@@ -494,5 +494,227 @@ test("one-time payments: private quotes, idempotent fulfillment, sandbox isolati
       }
     },
   );
+  await t.test(
+    "catalog prices stay private, fixed packages grant exact credits and online coaching is independent",
+    async () => {
+      const D = "00000000-0000-4000-8000-000000000055";
+      await db.query(
+        "insert into auth.users(id,email,raw_user_meta_data) values($1,'catalog@example.test',$2)",
+        [D, JSON.stringify({ full_name: "Catalog", invite_code: "M" })],
+      );
+      const prices = JSON.stringify({
+        single: 101,
+        monthly: 901,
+        starter: 401,
+        standard: 801,
+        premium: 1501,
+        online_monthly: 201,
+        online_quarterly: 501,
+        online_annual: 1001,
+      });
+      const save = "select save_member_catalog_prices($1,$2::jsonb,'USD')";
+      await assert.rejects(as("authenticated", D, save, [D, prices]), /仅教练/);
+      await as("authenticated", C, save, [D, prices]);
+      await assert.rejects(
+        as("authenticated", C, save, [D, JSON.stringify({ starter: -1 })]),
+        /价格无效/,
+      );
+      assert.equal(
+        (
+          await as(
+            "authenticated",
+            A,
+            "select * from member_prices where member_id=$1",
+            [D],
+          )
+        ).rows.length,
+        0,
+      );
+      for (const [kind, qty, amount] of [
+        ["starter", 5, 40100],
+        ["standard", 10, 80100],
+        ["premium", 20, 150100],
+      ] as const) {
+        await assert.rejects(prepare(D, D, kind, 2, amount), /无效/);
+        await assert.rejects(prepare(D, D, kind, 1, 1), /价格已更新/);
+        const o = await prepare(D, D, kind, 1, amount);
+        await settle(
+          o,
+          undefined,
+          undefined,
+          amount,
+          true,
+          "2026-01-31T20:00:00Z",
+        );
+        await settle(
+          o,
+          undefined,
+          undefined,
+          amount,
+          true,
+          "2026-01-31T20:00:00Z",
+        );
+        const rows = (
+          await service(
+            "select quantity,expires_on::text from session_entries where id=$1",
+            [o.id],
+          )
+        ).rows;
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].quantity, qty);
+        assert.equal(rows[0].expires_on, "2026-04-29");
+      }
+      const before = (
+        await service("select * from session_entries where member_id=$1", [D])
+      ).rows.length;
+      for (const [kind, amount, paid, end] of [
+        ["online_monthly", 20100, "2020-01-31T20:00:00Z", "2020-02-28"],
+        ["online_quarterly", 50100, "2020-05-31T20:00:00Z", "2020-08-30"],
+        ["online_annual", 100100, "2021-02-28T20:00:00Z", "2022-02-27"],
+      ] as const) {
+        const o = await prepare(D, D, kind, 1, amount);
+        await settle(o, undefined, undefined, amount, true, paid);
+        await settle(o, undefined, undefined, amount, true, paid);
+        const rows = (
+          await service(
+            "select ends_on::text from online_memberships where id=$1",
+            [o.id],
+          )
+        ).rows;
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].ends_on, end);
+      }
+      assert.equal(
+        (await service("select * from session_entries where member_id=$1", [D]))
+          .rows.length,
+        before,
+      );
+      assert.equal(
+        (
+          await service(
+            "select * from monthly_memberships where member_id=$1",
+            [D],
+          )
+        ).rows.length,
+        0,
+      );
+      assert.equal(
+        (
+          await as(
+            "authenticated",
+            A,
+            "select * from online_memberships where member_id=$1",
+            [D],
+          )
+        ).rows.length,
+        0,
+      );
+      await assert.rejects(
+        as(
+          "authenticated",
+          D,
+          "update online_memberships set ends_on='2099-01-01'",
+        ),
+        /permission denied/,
+      );
+      const sandbox = await prepare(D, C, "online_monthly", 1, 20100, false);
+      await settle(sandbox);
+      assert.equal(
+        (
+          await service("select * from online_memberships where id=$1", [
+            sandbox.id,
+          ])
+        ).rows.length,
+        0,
+      );
+      const active = randomUUID();
+      await as(
+        "authenticated",
+        C,
+        "select record_online_membership($1,$2,current_date,current_date+30,'manual',null,'USD')",
+        [active, D],
+      );
+      await assert.rejects(prepare(D, D, "online_annual", 1, 100100), /到期后/);
+      // Online membership never exempts an in-person lesson from its normal deduction.
+      const slot = randomUUID(),
+        lesson = randomUUID();
+      await db.query(
+        "insert into slots(id,starts_at,ends_at) values($1,now()-interval '3 hours',now()-interval '2 hours')",
+        [slot],
+      );
+      await db.query(
+        "insert into appointments(id,member_id,slot_id,created_by,status) values($1,$2,$3,$4,'booked')",
+        [lesson, D, slot, C],
+      );
+      await db.query("update appointments set status='completed' where id=$1", [
+        lesson,
+      ]);
+      const charged = (
+        await service(
+          "select kind,quantity,membership_id from session_entries where appointment_id=$1",
+          [lesson],
+        )
+      ).rows[0];
+      assert.equal(charged.kind, "lesson");
+      assert.equal(charged.quantity, -1);
+      assert.equal(charged.membership_id, null);
+      await assert.rejects(
+        as("authenticated", D, "select cancel_online_membership($1,'reason')", [
+          active,
+        ]),
+        /仅教练/,
+      );
+      await as(
+        "authenticated",
+        C,
+        "select cancel_online_membership($1,'recorded incorrectly')",
+        [active],
+      );
+      const overlap = await prepare(D, D, "online_monthly", 1, 20100);
+      await as(
+        "authenticated",
+        C,
+        "select record_online_membership($1,$2,current_date,current_date+30,'second manual',null,'USD')",
+        [randomUUID(), D],
+      );
+      await settle(
+        overlap,
+        undefined,
+        undefined,
+        20100,
+        true,
+        new Date().toISOString(),
+      );
+      assert.equal(
+        (
+          await service("select fulfillment from payment_orders where id=$1", [
+            overlap.id,
+          ])
+        ).rows[0].fulfillment,
+        "review",
+      );
+      const manual = randomUUID();
+      const record =
+        "select record_session_credit_with_expiry($1,$2,'purchase',5,'manual package',null,'USD','2027-01-01')";
+      await assert.rejects(
+        as("authenticated", D, record, [manual, D]),
+        /仅教练/,
+      );
+      await as("authenticated", C, record, [manual, D]);
+      await as("authenticated", C, record, [manual, D]);
+      await assert.rejects(
+        as("authenticated", C, record.replace("2027-01-01", "2027-02-01"), [
+          manual,
+          D,
+        ]),
+        /已使用/,
+      );
+      assert.equal(
+        (await service("select * from session_entries where id=$1", [manual]))
+          .rows.length,
+        1,
+      );
+    },
+  );
   await db.close();
 });

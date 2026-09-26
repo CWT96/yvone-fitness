@@ -2618,3 +2618,12 @@ html[lang="en"] .btn { white-space: normal; }
 .verification-card .auth-links { gap:20px; flex-wrap:wrap; }
 .verification-entry { margin-top:16px; }
 @media(max-width:520px) { .verification-layout { padding:16px; } .verification-card { padding:22px; } }
+
+.catalog-tabs {display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.catalog-price-summary {display:flex;flex-wrap:wrap;gap:8px 20px;max-width:640px}
+.catalog-price-summary span {display:block;font-size:13px}
+.online-includes {background:var(--paper,#f7f8f4);border:1px solid #dce3d7;border-radius:14px;padding:16px 20px;margin:16px 0 24px}
+.online-includes summary {font-weight:600;cursor:pointer}
+.online-includes li {margin:10px 0;line-height:1.7}
+.catalog-section .package-grid {align-items:stretch}
+@media(max-width:600px){.catalog-tabs .btn{flex:1;font-size:12px;padding:10px}.catalog-price-summary{display:grid}}

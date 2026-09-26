@@ -1,4 +1,9 @@
-import type { Data, MonthlyMembership } from "./types";
+import type {
+  Data,
+  MonthlyMembership,
+  SessionEntry,
+  Appointment,
+} from "./types";
 import { displayTime } from "./time";
 
 export function defaultMonthlyEnd(start: string) {
@@ -22,6 +27,64 @@ export function membershipForDate(
       m.ends_on >= day,
   );
 }
+// Replay the immutable journal. Expiring purchases are used first; expired unused
+// credits never pay for a later debit. Existing undated credits retain their meaning.
+export function sessionCreditBalance(
+  entries: SessionEntry[],
+  today: string,
+  zone: string,
+) {
+  const lots: { id: string; remaining: number; expires_on: string | null }[] =
+    [];
+  let debt = 0,
+    expired = 0;
+  function expire(day: string) {
+    for (const lot of lots)
+      if (lot.expires_on && lot.expires_on < day) {
+        expired += lot.remaining;
+        lot.remaining = 0;
+      }
+  }
+  for (const e of [...entries].sort(
+    (a, b) =>
+      Date.parse(a.created_at) - Date.parse(b.created_at) ||
+      b.quantity - a.quantity ||
+      a.id.localeCompare(b.id),
+  )) {
+    const day = displayTime(e.created_at, zone, "yyyy-MM-dd");
+    if (day > today) continue;
+    expire(day);
+    if (e.quantity > 0) {
+      const repaid = Math.min(debt, e.quantity);
+      debt -= repaid;
+      lots.push({
+        id: e.id,
+        remaining: e.quantity - repaid,
+        expires_on: e.expires_on || null,
+      });
+    } else if (e.quantity < 0) {
+      let needed = -e.quantity;
+      for (const lot of [...lots].sort((a, b) =>
+        (a.expires_on || "9999-12-31").localeCompare(
+          b.expires_on || "9999-12-31",
+        ),
+      )) {
+        const used = Math.min(needed, lot.remaining);
+        lot.remaining -= used;
+        needed -= used;
+        if (!needed) break;
+      }
+      debt += needed;
+    }
+  }
+  expire(today);
+  return {
+    balance: lots.reduce((n, l) => n + l.remaining, 0) - debt,
+    expired,
+    lots,
+  };
+}
+
 export function memberSessionStats(
   data: Data,
   member: string,
@@ -36,7 +99,20 @@ export function memberSessionStats(
     (b) => b.status === "booked" && Date.parse(b.slots.ends_at) > now.getTime(),
   );
   return {
-    balance: entries.reduce((sum, e) => sum + e.quantity, 0),
+    ...sessionCreditBalance(
+      entries.map((e) => {
+        const lesson = e.appointment_id
+          ? bookings.find((b) => b.id === e.appointment_id)
+          : undefined;
+        // Late coach marking must still honor credits valid on the actual lesson date.
+        return lesson && e.quantity < 0
+          ? { ...e, created_at: lesson.slots.starts_at }
+          : e;
+      }),
+      today,
+      zone,
+    ),
+    online: membershipForDate(data.online_memberships || [], member, today),
     purchased: entries
       .filter((e) => e.kind === "purchase")
       .reduce((sum, e) => sum + e.quantity, 0),
@@ -94,4 +170,30 @@ export function validateCredit(quantity: number, kind: string, note: string) {
     throw new Error("请输入有效的整数课次（最多 10000 节）");
   if (!note.trim() || note.length > 2000)
     throw new Error("请填写说明或调整原因（最多 2000 字）");
+}
+
+export function balanceAfterLesson(data: Data, lesson: Appointment) {
+  if (data.session_entries.some((e) => e.appointment_id === lesson.id))
+    return memberSessionStats(data, lesson.member_id).balance;
+  return memberSessionStats(
+    {
+      ...data,
+      session_entries: [
+        ...data.session_entries,
+        {
+          id: `preview-${lesson.id}`,
+          member_id: lesson.member_id,
+          kind: "lesson",
+          quantity: -1,
+          note: "",
+          amount: null,
+          currency: "USD",
+          appointment_id: lesson.id,
+          membership_id: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    },
+    lesson.member_id,
+  ).balance;
 }

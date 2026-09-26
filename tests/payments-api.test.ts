@@ -210,7 +210,18 @@ test("payment API authenticates callers, snapshots prices and verifies Stripe si
         live = true;
         process.env.STRIPE_MODE = "live";
         process.env.STRIPE_SECRET_KEY = "rk_live_local_fixture";
-        for (const kind of ["single", "monthly", "quarterly", "annual"]) {
+        for (const kind of [
+          "single",
+          "monthly",
+          "quarterly",
+          "annual",
+          "starter",
+          "standard",
+          "premium",
+          "online_monthly",
+          "online_quarterly",
+          "online_annual",
+        ]) {
           o.package = kind;
           const result = await POST(
             req("POST", {

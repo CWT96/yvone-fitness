@@ -1,3 +1,4 @@
+import { salePackages, packageOptions } from "./package-options";
 import type { Appointment, Data } from "./types";
 import { displayTime } from "./time";
 
@@ -29,9 +30,6 @@ export function memberNeeds(data: Data, memberId: string) {
     ),
     price:
       !price ||
-      (price.single_price == null &&
-        price.monthly_price == null &&
-        price.quarterly_price == null &&
-        price.annual_price == null),
+      !salePackages.some((k) => price[packageOptions[k].priceKey] != null),
   };
 }

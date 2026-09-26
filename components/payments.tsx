@@ -1,7 +1,14 @@
 "use client";
 import { useLanguage } from "@/components/language-provider";
 
-import { packageOptions, type PackageKind } from "@/lib/package-options";
+import {
+  packageOptions,
+  salePackages,
+  courseCategories,
+  onlineBenefits,
+  packageDescription,
+  type PackageKind,
+} from "@/lib/package-options";
 import { CoursePolicy } from "@/components/course-policy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Data, Profile } from "@/lib/types";
@@ -53,6 +60,25 @@ export function Payments({
     [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
     [hint, setHint] = useState("");
+  const [category, setCategory] = useState<string>("offline");
+  useEffect(() => {
+    const restore = () => {
+      const value = new URLSearchParams(window.location.search).get("course");
+      setCategory(
+        courseCategories.some((c) => c.id === value) ? value! : "offline",
+      );
+    };
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  function chooseCategory(value: string) {
+    setCategory(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set("course", value);
+    if (url.href !== window.location.href)
+      window.history.pushState(null, "", url);
+  }
   const generation = useRef(0);
   const [opening, setOpening] = useState<string | null>(null);
   const price = data.member_prices.find((p) => p.member_id === member);
@@ -157,6 +183,9 @@ export function Payments({
   const covered = data.monthly_memberships.some(
     (m) => m.member_id === member && !m.cancelled_at && m.ends_on >= today,
   );
+  const onlineCovered = (data.online_memberships || []).some(
+    (m) => m.member_id === member && !m.cancelled_at && m.ends_on >= today,
+  );
   return (
     <section className="payments-layout">
       <a className="policy-jump" href="#course-policy">
@@ -189,7 +218,7 @@ export function Payments({
                   )
                 : t("教练正在测试付款功能，完成后开放购买。")
               : t(
-                  "单次按购买数量入账；期限套餐一次付款购买 1、3 或 12 个月，到期后手动购买，不自动续费。",
+                  "线下训练与线上指导分开购买。所有方案均为一次付款，到期后手动购买，不自动续费。",
                 )}
           </p>
         </div>
@@ -217,112 +246,147 @@ export function Payments({
         </label>
       )}
       {(!coach || mode === "test") && (
-        <div className="package-grid">
-          {(Object.keys(packageOptions) as PackageKind[]).map((kind) => {
-            const unit = price?.[packageOptions[kind].priceKey];
-            const pending = orders.some(
-              (o) =>
-                o.member_id === member &&
-                o.package === kind &&
-                o.status === "pending" &&
-                o.livemode === (mode === "live"),
-            );
-            const enabled =
-              (mode === "live" && !coach) || (mode === "test" && coach);
-            return (
-              <article className="package-card" key={kind}>
-                <h2>{t(packageOptions[kind].label)}</h2>
-                <p>
-                  {kind === "single"
-                    ? t("付款确认后自动增加对应课时，训练时间另行预约。")
-                    : t(
-                        "付款当日开始 {0} 个月，有效期内不限次数，仍需预约开放时段。",
-                        [packageOptions[kind].months],
-                      )}
-                </p>
-                <div className="price">
-                  {unit == null
-                    ? t("待教练设置")
-                    : money(Math.round(unit * 100), price!.currency)}
-                  <small>
-                    {" "}
-                    /{" "}
-                    {language === "en" && kind === "single"
-                      ? "session"
-                      : t(packageOptions[kind].unit)}
-                  </small>
-                </div>
-                {kind === "single" && (
-                  <label>
-                    {t("购买节数")}
-                    <input
-                      aria-label={t("购买节数")}
-                      type="number"
-                      min={1}
-                      max={100}
-                      step={1}
-                      value={quantity}
-                      onChange={(e) => setQuantity(Number(e.target.value))}
-                    />
-                  </label>
-                )}
-                {unit != null && (
-                  <p>
-                    {t("本次合计")}{" "}
-                    {money(
-                      Math.round(unit * 100) *
-                        (kind === "single" ? quantity : 1),
-                      price!.currency,
+        <section className="catalog-section">
+          <div className="catalog-tabs" aria-label={t("课程分类")}>
+            {courseCategories.map((c) => (
+              <button
+                type="button"
+                className={`btn ${category === c.id ? "" : "secondary"}`}
+                aria-pressed={category === c.id}
+                key={c.id}
+                onClick={() => chooseCategory(c.id)}
+              >
+                {t(c.label)}
+              </button>
+            ))}
+          </div>
+          <p className="muted">
+            {t(courseCategories.find((c) => c.id === category)!.description)}
+          </p>
+          {category === "online" && (
+            <details className="online-includes">
+              <summary>{t("所有线上套餐均包含")}</summary>
+              <ul>
+                {onlineBenefits.map((b) => (
+                  <li key={b}>{t(b)}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <div className="package-grid">
+            {salePackages
+              .filter((k) => packageOptions[k].category === category)
+              .map((kind) => {
+                const option = packageOptions[kind];
+                const unit = price?.[option.priceKey];
+                const blocked =
+                  option.category === "online"
+                    ? onlineCovered
+                    : !option.sessions && covered;
+                const pending = orders.some(
+                  (o) =>
+                    o.member_id === member &&
+                    o.package === kind &&
+                    o.status === "pending" &&
+                    o.livemode === (mode === "live"),
+                );
+                const enabled =
+                  (mode === "live" && !coach) || (mode === "test" && coach);
+                return (
+                  <article className="package-card" key={kind}>
+                    <h2>{t(packageOptions[kind].label)}</h2>
+                    <p>{t(packageDescription(kind))}</p>
+                    <div className="price">
+                      {unit == null
+                        ? t("待教练设置")
+                        : money(Math.round(unit * 100), price!.currency)}
+                      <small>
+                        {" "}
+                        /{" "}
+                        {language === "en" && kind === "single"
+                          ? "session"
+                          : t(packageOptions[kind].unit)}
+                      </small>
+                    </div>
+                    {kind === "single" && (
+                      <label>
+                        {t("购买节数")}
+                        <input
+                          aria-label={t("购买节数")}
+                          type="number"
+                          min={1}
+                          max={100}
+                          step={1}
+                          value={quantity}
+                          onChange={(e) => setQuantity(Number(e.target.value))}
+                        />
+                      </label>
                     )}
-                    {kind !== "single" ? t(" · 不自动续费") : ""}
-                  </p>
-                )}
-                {kind !== "single" && covered && (
-                  <p>{t("已有包月记录，请到期后再购买。")}</p>
-                )}
-                {pending && (
-                  <p>{t("已有待付款订单，请在下方继续支付或关闭。")}</p>
-                )}
-                <button
-                  className="btn full"
-                  disabled={
-                    !enabled ||
-                    busy ||
-                    !member ||
-                    unit == null ||
-                    unit <= 0 ||
-                    pending ||
-                    (kind !== "single" && covered) ||
-                    !Number.isInteger(quantity) ||
-                    quantity < 1 ||
-                    quantity > 100
-                  }
-                  onClick={() =>
-                    void checkout({
-                      memberId: member,
-                      package: kind,
-                      quantity: kind === "single" ? quantity : 1,
-                      expectedUnit: Math.round(unit! * 100),
-                    })
-                  }
-                >
-                  {busy && opening === kind
-                    ? t("正在打开…")
-                    : !enabled
-                      ? t("在线支付尚未开放")
-                      : mode === "test"
-                        ? t("打开测试付款页")
-                        : t("前往 Stripe 付款")}
-                </button>
-                <small>
-                  {unit === 0
-                    ? t("免费课程请联系教练入账。")
-                    : t("购买前请阅读本页购课须知，并在套餐有效期内安排训练。")}
-                </small>
-              </article>
-            );
-          })}
-        </div>
+                    {unit != null && (
+                      <p>
+                        {t("本次合计")}{" "}
+                        {money(
+                          Math.round(unit * 100) *
+                            (kind === "single" ? quantity : 1),
+                          price!.currency,
+                        )}
+                        {!option.sessions ? t(" · 不自动续费") : ""}
+                      </p>
+                    )}
+                    {blocked && (
+                      <p>
+                        {t(
+                          "此类服务已有有效或即将开始的记录，请到期后再购买。",
+                        )}
+                      </p>
+                    )}
+                    {pending && (
+                      <p>{t("已有待付款订单，请在下方继续支付或关闭。")}</p>
+                    )}
+                    <button
+                      className="btn full"
+                      disabled={
+                        !enabled ||
+                        busy ||
+                        !member ||
+                        unit == null ||
+                        unit <= 0 ||
+                        pending ||
+                        blocked ||
+                        (kind === "single" &&
+                          (!Number.isInteger(quantity) ||
+                            quantity < 1 ||
+                            quantity > 100))
+                      }
+                      onClick={() =>
+                        void checkout({
+                          memberId: member,
+                          package: kind,
+                          quantity: kind === "single" ? quantity : 1,
+                          expectedUnit: Math.round(unit! * 100),
+                        })
+                      }
+                    >
+                      {busy && opening === kind
+                        ? t("正在打开…")
+                        : !enabled
+                          ? t("在线支付尚未开放")
+                          : mode === "test"
+                            ? t("打开测试付款页")
+                            : t("前往 Stripe 付款")}
+                    </button>
+                    <small>
+                      {unit === 0
+                        ? t("免费课程请联系教练入账。")
+                        : t(
+                            "购买前请阅读本页购课须知，并在套餐有效期内安排训练。",
+                          )}
+                    </small>
+                  </article>
+                );
+              })}
+          </div>
+        </section>
       )}
       <section className="panel">
         <div className="section-head">

@@ -1,4 +1,5 @@
 "use client";
+import { packageOptions, salePackages } from "@/lib/package-options";
 import type { ReactNode } from "react";
 import type { Data, Appointment } from "@/lib/types";
 import { memberSessionStats } from "@/lib/session-accounts";
@@ -147,10 +148,21 @@ export function MemberDashboard({
             : "当前没有有效包月"}
         </p>
         <p>
-          专属价格：单次 {money(price?.single_price)} · 包月{" "}
-          {money(price?.monthly_price)} · 3 个月 {money(price?.quarterly_price)}{" "}
-          · 12 个月 {money(price?.annual_price)}
+          {stats.online
+            ? `线上指导有效：${stats.online.starts_on} 至 ${stats.online.ends_on}（不含线下课程）`
+            : "当前没有有效线上服务"}
         </p>
+        {stats.expired > 0 && <p>过期未用课时：{stats.expired} 节</p>}
+        <div className="catalog-price-summary">
+          {salePackages
+            .filter((k) => price?.[packageOptions[k].priceKey] != null)
+            .map((k) => (
+              <span key={k}>
+                {packageOptions[k].label}：
+                {money(price?.[packageOptions[k].priceKey])}
+              </span>
+            ))}
+        </div>
         <p>
           邮件通知：{m.email_notifications ? "开启" : "关闭"} · 成功推荐{" "}
           {
