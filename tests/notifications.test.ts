@@ -134,6 +134,30 @@ test("notification endpoint authorization and delivery behavior", async (t) => {
       },
     );
     await t.test(
+      "coach and member emails include matching policies in HTML and text",
+      async () => {
+        for (const recipientRole of ["coach", "member"]) {
+          role = recipientRole;
+          for (const [subject, expected] of [
+            ["预约已确认", "12小时"],
+            ["预约已改期", "12小时"],
+            ["预约已取消", "12小时"],
+            ["训练提醒", "迟到"],
+            ["课程未到场（No show）", "缺席"],
+            ["购课付款已确认", "有效期"],
+          ]) {
+            queue = [{ ...job(), subject }];
+            await POST(request(process.env.CRON_SECRET));
+            const message = emails.at(-1)!.body;
+            assert.match(String(message.html), new RegExp(expected));
+            assert.match(String(message.text), new RegExp(expected));
+            assert.match(String(message.html), /page=packages#course-policy/);
+            assert.match(String(message.html), /购课须知 · 温馨提醒/);
+          }
+        }
+      },
+    );
+    await t.test(
       "deleted or unpublished plans skip pending announcement emails",
       async () => {
         queue = [{ ...job(), plan_id: "removed-plan" }];

@@ -20,7 +20,7 @@ export const attendanceReminder =
   "请准时到场：迟到不补时；未提前通知且无故缺席，按规则扣除该节课时，不补课或退还。";
 export function emailPolicyReminder(subject: string) {
   if (/取消|改期/.test(subject)) return changeReminder + " " + policyClosing;
-  if (/预约已确认|训练提醒/.test(subject))
+  if (/预约|训练提醒|课程提醒/.test(subject))
     return changeReminder + "\n" + attendanceReminder;
   if (/未到场|缺席/.test(subject))
     return attendanceReminder + " " + policyClosing;

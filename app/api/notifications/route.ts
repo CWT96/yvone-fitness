@@ -143,14 +143,11 @@ async function processJobs(request: Request) {
           from,
           to: [recipient.email],
           subject: job.subject,
-          text: `${recipient.full_name}，你好：\n${job.body}${recipient.role === "member" && emailPolicyReminder(job.subject) ? `\n\n温馨提醒：${emailPolicyReminder(job.subject)}\n完整购课须知：${siteUrl.origin}/?page=packages#course-policy` : ""}\n${siteUrl.origin}\n可在个人设置中关闭提醒。`,
+          text: `${recipient.full_name}，你好：\n${job.body}${emailPolicyReminder(job.subject) ? `\n\n温馨提醒：${emailPolicyReminder(job.subject)}\n完整购课须知：${siteUrl.origin}/?page=packages#course-policy` : ""}\n${siteUrl.origin}\n可在个人设置中关闭提醒。`,
           html: emailContent(
             recipient.full_name,
             job.subject,
-            job.body +
-              (recipient.role === "member" && emailPolicyReminder(job.subject)
-                ? `\n\n温馨提醒：${emailPolicyReminder(job.subject)}\n完整购课须知请在网站「购买课程」查看。`
-                : ""),
+            job.body,
             siteUrl.origin,
             settings?.studio_name || "Yvone Fitness",
           ),
